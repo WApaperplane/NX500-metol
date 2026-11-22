@@ -1,0 +1,160 @@
+#!/bin/sh
+# Stream one original photo or video from DCIM as a browser attachment.
+LC_ALL=C
+export LC_ALL
+BUSYBOX=/opt/usr/nx-ks/busybox
+METHOD=${REQUEST_METHOD:-GET}
+
+fail() {
+    printf 'Status: %s\r\n' "$1"
+    printf 'Access-Control-Allow-Origin: *\r\n'
+    printf 'Content-Type: text/plain; charset=utf-8\r\n'
+    printf 'Cache-Control: no-store\r\n\r\n'
+    [ "$METHOD" = HEAD ] || printf '%s\n' "$1"
+    exit 0
+}
+
+# 页面在 80 端口、本 CGI 在 8080，XHR 取文件是跨域请求。
+# 没有下面这几个头，浏览器会直接拦掉响应（连 status 都读不到），
+# 前端就没法做 Range 续传 —— 这比"能不能下载"更前面一步。
+case "$METHOD" in
+    GET|HEAD) ;;
+    OPTIONS)
+        printf 'Status: 204 No Content\r\n'
+        printf 'Access-Control-Allow-Origin: *\r\n'
+        printf 'Access-Control-Allow-Methods: GET, HEAD, OPTIONS\r\n'
+        printf 'Access-Control-Allow-Headers: Range\r\n'
+        printf 'Access-Control-Max-Age: 600\r\n'
+        printf 'Content-Length: 0\r\n\r\n'
+        exit 0 ;;
+    *) fail '405 Method Not Allowed' ;;
+esac
+# ---- 参数解析：f=<路径> [b=<起始字节> e=<结束字节>] ----
+# ★ 2026-11-22 实机结论：busybox httpd 1.20.2 **不把 Range 头传给 CGI**
+#   （带 `Range: bytes=0-1023` 请求时 CGI 环境里没有 HTTP_RANGE），而且
+#   OPTIONS 直接被 httpd 自己回 501。所以 206 分片这条路在本机不成立。
+#   分片改用 query 参数 b/e —— 只依赖 Content-Length（已验证会透传）。
+QS=${QUERY_STRING:-}
+QS_F=; QS_B=; QS_E=
+OLD_IFS=$IFS; IFS='&'; set -f
+for _pair in $QS; do
+    case "$_pair" in
+        f=*) QS_F=${_pair#f=} ;;
+        b=*) QS_B=${_pair#b=} ;;
+        e=*) QS_E=${_pair#e=} ;;
+    esac
+done
+set +f
+IFS=$OLD_IFS
+[ -n "$QS_F" ] || fail '400 Bad Request'
+# 只对路径值做编码检查（b/e 是纯数字，下面还会再校验）
+case "$QS_F" in
+    *%0[0-9a-fA-F]*|*%1[0-9a-fA-F]*|*%7[fF]*) fail '400 Bad Request' ;;
+esac
+REL=$("$BUSYBOX" httpd -d "$QS_F") || fail '400 Bad Request'
+case "/$REL/" in
+    *//*|*/./*|*/../*|*\\*|*[[:cntrl:]]*) fail '400 Bad Request' ;;
+esac
+
+NAME=${REL##*/}
+case "$NAME" in
+    *.*) ;;
+    *) fail '404 Not Found' ;;
+esac
+EXT=$(printf '%s' "${NAME##*.}" | tr 'A-Z' 'a-z')
+case "$EXT" in
+    jpg|jpeg|png|gif|bmp|tif|tiff|mov|mp4|avi|3gp|m4v|webm) ;;
+    *) fail '404 Not Found' ;;
+esac
+
+DCIM=
+for card in /mnt/mmc /tmp/mmc /mnt/sd /tmp/sd; do
+    if [ -d "$card/DCIM" ]; then
+        DCIM=$(readlink -f "$card/DCIM")
+        break
+    fi
+done
+[ -n "$DCIM" ] || fail '404 Not Found'
+SOURCE=$(readlink -f "$DCIM/$REL") || fail '404 Not Found'
+case "$SOURCE" in
+    "$DCIM/"*) ;;
+    *) fail '404 Not Found' ;;
+esac
+[ -f "$SOURCE" ] && [ -r "$SOURCE" ] || fail '404 Not Found'
+exec 3< "$SOURCE"
+SIZE=$(stat -Lc %s /proc/self/fd/3) || fail '404 Not Found'
+MTIME=$(stat -Lc %Y /proc/self/fd/3) || fail '404 Not Found'
+LAST_MODIFIED=$(date -u -d "@$MTIME" '+%a, %d %b %Y %H:%M:%S GMT') || fail '500 Internal Server Error'
+# ETag from size+mtime, not a content hash: hashing cost ~0.74s of a single
+# core per request and ran even for 1-byte Range probes. Size+mtime is what
+# nginx/lighttpd use and is enough to keep If-Range from joining two files.
+ETAG="\"$(printf '%x' "$MTIME")-$(printf '%x' "$SIZE")\""
+
+NOT_MODIFIED=0
+if [ -n "${HTTP_IF_NONE_MATCH:-}" ]; then
+    OLD_IFS=$IFS; IFS=,; set -f
+    for TAG in $HTTP_IF_NONE_MATCH; do
+        TAG=$(printf '%s' "$TAG" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^W\///')
+        if [ "$TAG" = '*' ] || [ "$TAG" = "$ETAG" ]; then NOT_MODIFIED=1; fi
+    done
+    set +f
+    IFS=$OLD_IFS
+elif [ -n "${HTTP_IF_MODIFIED_SINCE:-}" ]; then
+    SINCE=$(date -u -d "$HTTP_IF_MODIFIED_SINCE" +%s 2>/dev/null) || SINCE=
+    case "$SINCE" in ''|*[!0-9]*) ;; *) [ "$MTIME" -le "$SINCE" ] && NOT_MODIFIED=1 ;; esac
+fi
+if [ "$NOT_MODIFIED" -eq 1 ]; then
+    printf 'Status: 304 Not Modified\r\nETag: %s\r\nLast-Modified: %s\r\nAccess-Control-Allow-Origin: *\r\n\r\n' "$ETAG" "$LAST_MODIFIED"
+    exit 0
+fi
+START=0
+END=$((SIZE - 1))
+PARTIAL=0
+# b/e 分片（见上方说明：本机 Range 头到不了 CGI）。
+# 去前导零 —— $((08)) 在 POSIX sh 里是八进制，会直接报错。
+case "$QS_B" in ''|*[!0-9]*) QS_B= ;; *) [ "${#QS_B}" -le 10 ] || QS_B= ;; esac
+case "$QS_E" in ''|*[!0-9]*) QS_E= ;; *) [ "${#QS_E}" -le 10 ] || QS_E= ;; esac
+if [ -n "$QS_B" ]; then
+    while :; do _t=${QS_B#0}; [ "$_t" = "$QS_B" ] && break; QS_B=$_t; done
+    [ -n "$QS_B" ] || QS_B=0
+fi
+if [ -n "$QS_E" ]; then
+    while :; do _t=${QS_E#0}; [ "$_t" = "$QS_E" ] && break; QS_E=$_t; done
+    [ -n "$QS_E" ] || QS_E=0
+fi
+if [ -n "$QS_B" ] && [ -n "$QS_E" ]; then
+    START=$QS_B
+    END=$QS_E
+    [ "$END" -lt "$SIZE" ] || END=$((SIZE - 1))
+    if [ "$START" -ge "$SIZE" ] || [ "$START" -gt "$END" ]; then
+        # 越界：回 0 字节，前端按长度判失败并不会把空片拼进去
+        printf 'Content-Type: application/octet-stream\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\n\r\n'
+        exit 0
+    fi
+    PARTIAL=1
+fi
+LENGTH=$SIZE
+if [ "$PARTIAL" -eq 1 ]; then
+    LENGTH=$((END - START + 1))
+fi
+
+case "$REL" in
+    */*) DIR=${REL%/*}; NAME=${DIR##*/}_$NAME ;;
+esac
+FALLBACK=$(printf '%s' "$NAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+ENCODED=$(printf '%s' "$NAME" | od -An -v -t x1 | awk '{ for (i=1; i<=NF; i++) printf "%%%s", $i }')
+printf 'Content-Type: application/octet-stream\r\n'
+printf 'Access-Control-Allow-Origin: *\r\n'
+printf 'Access-Control-Expose-Headers: Content-Length, Content-Range, X-Accept-Chunk, ETag\r\n'
+# Accept-Ranges 报 none：HTTP Range 在本机到不了 CGI（busybox httpd 不透传），
+# 报 bytes 只会骗到别的客户端。分片能力用 X-Accept-Chunk 声明。
+printf 'Accept-Ranges: none\r\nX-Accept-Chunk: 1\r\n'
+printf 'Content-Length: %s\r\nETag: %s\r\nLast-Modified: %s\r\n' "$LENGTH" "$ETAG" "$LAST_MODIFIED"
+printf "Content-Disposition: attachment; filename=\"%s\"; filename*=UTF-8''%s\r\n" "$FALLBACK" "$ENCODED"
+printf 'X-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\n\r\n'
+[ "$METHOD" = HEAD ] && exit 0
+if [ "$PARTIAL" -eq 1 ]; then
+    tail -c "+$((START + 1))" <&3 | head -c "$LENGTH"
+else
+    exec cat <&3
+fi

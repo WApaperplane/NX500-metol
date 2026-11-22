@@ -1,0 +1,23 @@
+#=====================================================================
+# gui_vlog.NX500 —— V-Log 曲线（2026-11-20）
+#=====================================================================
+# 全部动作都走 vlog.sh；菜单只负责把动词递过去。
+#   V-Log 开关  幂等：没曲线就上曲线，有曲线就回原厂（gamma-reload.sh toggle）
+#   回原厂      强制回 FACTORY gamma
+#   曲线状态    打印 NXL_GAMMA_RELOAD1 块（命令行同款）
+#   放行检查    跑 vlog-arm.sh arm 的七项，弹窗只给结论，明细落 /tmp/nx-p0/vlog-gate.log
+#
+# ★ 放行检查与曲线开关是两件事，不要合并成一个按钮：
+#   放行要 A18 回原厂 + PW 中性 + 未插 USB；曲线开关只关心 gamma 侧。
+#   合并后「一次点击改两处状态」，出问题无从归因。
+#
+# ★ 标签长度铁律：mod_gui 2 列网格，控制在 6 个全角字符内。
+#=====================================================================
+
+button|V-Log 开关|vlog.sh toggle
+button|回 原 厂|vlog.sh off
+button|曲线状态|vlog.sh status
+
+button|放行检查|vlog.sh gate
+button|返回|@/opt/usr/nx-ks/gui_evwifi.NX500
+button|取消|/opt/usr/nx-ks/gui_exit.sh

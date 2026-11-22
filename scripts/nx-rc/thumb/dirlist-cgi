@@ -1,0 +1,109 @@
+#!/bin/sh
+# ============================================================
+# dirlist - DCIM 实时目录列表 CGI (8080 busybox httpd)
+#
+# 为什么存在(2026-09-05):
+#   前端相册原本抓 80 端口 daemon 的 /DCIM 目录页,但那是
+#   daemon 启动时的快照,新拍照片不会出现在列表里,导致
+#   "相册看不到最新照片"。本 CGI 每次请求都实时 readdir SD 卡。
+#
+# 访问:
+#   GET /cgi-bin/dirlist?p=<DCIM相对路径>
+#   例: /cgi-bin/dirlist?p=          -> 根(子目录清单)
+#       /cgi-bin/dirlist?p=575PHOTO  -> 该目录文件清单
+# 返回 JSON:
+#   {"ok":true,"dirs":["575PHOTO"],"files":["SAM_3032.JPG"]}
+#   dirs 为空数组时表示该层没有子目录。
+#
+# 部署: thumb-install.sh 会把本文件复制到 capdtm/www/cgi-bin/dirlist
+# ============================================================
+
+SD=""
+for cand in /mnt/mmc /tmp/mmc /mnt/sd /tmp/sd; do
+    if [ -d "$cand/DCIM" ]; then
+        SD=$cand
+        break
+    fi
+done
+
+json_fail() {
+    echo "Content-Type: application/json"
+    echo "Access-Control-Allow-Origin: *"
+    echo "Cache-Control: no-store"
+    echo ""
+    printf '{"ok":false,"err":"%s"}' "$1"
+    exit 0
+}
+
+urldecode() {
+    case "$1" in
+        *%*) printf '%b' "$(printf '%s' "$1" | sed 's/%/\\x/g')" ;;
+        *)   printf '%s' "$1" ;;
+    esac
+}
+
+[ -z "$SD" ] && json_fail "SD card not found"
+
+P=""
+QS=${QUERY_STRING:-}
+IFS='&'
+for pair in $QS; do
+    [ -z "$pair" ] && continue
+    key=${pair%%=*}
+    val=${pair#*=}
+    case "$key" in
+        p) P=$(urldecode "$val") ;;
+    esac
+done
+unset IFS
+
+# ---- 路径安全:仅允许 DCIM 下相对路径,禁止 .. 与绝对路径 ----
+P=$(printf '%s' "$P" | sed 's#^/*##; s#/*$##')
+case "$P" in
+    *".."*|*";"*|*"|"*|*"&"*|*"\\"*) json_fail "invalid path" ;;
+esac
+
+TARGET="$SD/DCIM/$P"
+[ -d "$TARGET" ] || json_fail "not found"
+
+# ---- 列目录:目录与文件分开(busybox ls -F 用尾缀 / 标记目录) ----
+TMP=$(mktemp) || json_fail "no temporary file"
+trap 'rm -f "$TMP"' EXIT
+trap 'exit 1' HUP INT TERM
+ls -1F "$TARGET" > "$TMP" 2>/dev/null || json_fail "readdir failed"
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Cache-Control: no-store"
+echo ""
+DIRLIST_PATH="$P" LC_ALL=C awk '
+    function quote(value,    i, c, out) {
+        out = "\""
+        for (i = 1; i <= length(value); i++) {
+            c = substr(value, i, 1)
+            if (c == "\"" || c == "\\") out = out "\\" c
+            else if (c in control) out = out control[c]
+            else out = out c
+        }
+        return out "\""
+    }
+    function entries(file, directories,    name, comma) {
+        comma = ""
+        while ((getline name < file) > 0) {
+            if (name == "" || name ~ /^\./ || (name ~ /\/$/) != directories) continue
+            sub(/[\/*]$/, "", name)
+            printf "%s%s", comma, quote(name)
+            comma = ","
+        }
+        close(file)
+    }
+    BEGIN {
+        for (i = 1; i < 32; i++) control[sprintf("%c", i)] = sprintf("\\u%04x", i)
+        printf "{\"ok\":true,\"path\":%s,\"dirs\":[", quote(ENVIRON["DIRLIST_PATH"])
+        entries(ARGV[1], 1)
+        printf "],\"files\":["
+        entries(ARGV[1], 0)
+        printf "]}"
+        exit
+    }
+' "$TMP"

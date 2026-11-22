@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "tables": {
+    "lcl_blockbust.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "3863458888a54e5ac27f8597d22f1f5dc77a574c6dc8421e9726f90399180503"
+    },
+    "lcl_cinebasea.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "d69dab273bb3d5950989c1d8c320f4e2fcd2087e3c88922e5464e202e5e7be99"
+    },
+    "lcl_cinetone.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "661b69cf92232f37dd644b7f183401b83335544e85e33b3e7641c243013a7025"
+    },
+    "lcl_desert.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "d1d2c993940564724f4c48a0d830bd9937e4ac07d2ddf306c54fe165807d7abb"
+    },
+    "lcl_dramavio.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "28319171fcdc7d034a638e6c2a454fc944e6f0996d76bc5e3ae6b7676da110e4"
+    },
+    "lcl_filmtone.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "cf0593d03d31e50875db8ff61002214be62d103aa18826aef16d158043607b90"
+    },
+    "lcl_forest1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "b519f74577ab301a52834293d3d19092ba881a2fa9a51beb0e68f6ecfeab59f2"
+    },
+    "lcl_forest2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "4ee49802495a3659a1fe4cc3a9ada76481259275ed34e3ba7e081b95ac1c5d26"
+    },
+    "lcl_goldenh1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "c4d507cf2551c9c1fdccc3dfa79339df10810fb3e9c11a642a9bc721fbeee0aa"
+    },
+    "lcl_goldenh2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "ba4d119bb7ea3ee635636669f620c4380a43a1025c184e60be56784503beefe8"
+    },
+    "lcl_hollyday.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "0cd6847ec1c8bc8276faae4d35fbf9ed8318d3ea34ffdb993b175fc4e86bb144"
+    },
+    "lcl_hollynit.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "a51021a7c2362032ce082a66c50ffa026706fa2ba0a3782276ada35c8e2605a0"
+    },
+    "lcl_night1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "c93b89a3d11fae1157471d97ab636606c3b410329a48d5335aa5b4e9c7e3a15b"
+    },
+    "lcl_night2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "d3e7d84e1c1e82fbe40f71686dfc1b11721d7aff825edd117b39f64fbe93c904"
+    },
+    "lcl_noir.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "c771a1bba4a255f4291dfe13e08beb838aaeb180cd1739bfbc7ecdf06c289850"
+    },
+    "lcl_nostbleach.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "2d611623eaa09a937af5fcefd36e4a79ce3f73379d6e5bc05831f9e673941016"
+    },
+    "lcl_romantic.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "67117017f96d54a5cd7a9f7217380d6560341d10d968916bdeccaadbf780364c"
+    },
+    "lcl_selenchr.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "c106ed7bec701ae9b0216aa7225baa5c6bdc4daa72203488581d6104774535a1"
+    },
+    "lcl_sengo.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "d1f04165a689cee0713d3cdb7f649f492aa3c997a19f10688745dd40c192f507"
+    },
+    "lcl_silkychr.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "6bb7440e50bf9ec4cf6a8cfee7148f91d7594966774feb7ab74dacf436fecd44"
+    },
+    "lcl_tealor1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "9985807db5d86d6d903b7bb36dd9cc7c93ea874d3fc17cd506ce314ace7730b7"
+    },
+    "lcl_tealor2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "4d38176a5d15bf0f77da466f8c504298cdbcd35df8402bd5aa4f411e11ea247b"
+    },
+    "vc_agressive.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "fc0fc557865fea61401ff36b7dd441a0b8fb0d056a0e545c48f3874c3c4c1021"
+    },
+    "vc_bleach_lo.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "25ad6612d91274e7c2b0b60e537b3945ac853b9c5041f492b9635f5486006a57"
+    },
+    "vc_bleach_sb.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "5a9af92f344cfb4c6a92143313e29e968fd66fd6203aab87df1f9bef9eca5cd4"
+    },
+    "vc_bluedusk.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "d6136a3d549c5bdf5e0fed5a0269ccf9ad2ee71944b6b546471e73cc3a94af71"
+    },
+    "vc_bluenight.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "d0792783916d32aaa72084290c3c18d6184b8055e9a2bc017a2ed401db9886f7"
+    },
+    "vc_bw_hicon.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "02364183e36080e829c55958df09c3dfbc110f2be1faabacbff7821dbb877546"
+    },
+    "vc_bw_locon.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "198e66d65558aec1edae32f7c514241087f8cdc9b1e96c87fbcf9fa57879ba08"
+    },
+    "vc_bw_locondk.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "2ca05ec1c1267adbe2373fe56ce93dd723e365899279f415b7e1eb1d87ceaee5"
+    },
+    "vc_bw_midcon.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "5b9a738eb0d4b50abeeaeec4a5422f97079e758d4f79cbee2af06091769e7fee"
+    },
+    "vc_cyan1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "e3e51fbc2cab2e302382c59c75bce671e403f84c5eaec74532f5045e127fbb8c"
+    },
+    "vc_cyan2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "69e38762177fea8d80a79208e26f4e01e05e219a88401f3976a4898435afe911"
+    },
+    "vc_fashion1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "0af8defd8e22af64ce5795cc35a8af1b4bb5dc43e6f80265bb751bfd7a614599"
+    },
+    "vc_fashion2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "8a27b5d0ec65f19e32aefd0f11321efd8d15c6d0749a9ed512c7560b8a2137cc"
+    },
+    "vc_fashionlo.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "da2066cbf49273958aac41f015928b61f47ab83946b359f893a5f51e170f2e1d"
+    },
+    "vc_golden1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "a50985b837e1d369abd152929e82b1cd4c395c4d51a855b13b67cb3b4b2e61ba"
+    },
+    "vc_golden2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "3de42cff6f17b2b40312bea01d81635159cf25c04d1339c0acb89afbc19d7894"
+    },
+    "vc_hangover.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "013767c60ed3d16f015907f809640ddf028dff476f6ccd0b9be3ab4e677f07b9"
+    },
+    "vc_hicon.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "75cf0f3c7dd28b644a8b0e51fff79e6c4290fb197cdd9e9ffea069cca8c8b4f7"
+    },
+    "vc_locool.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "8f4d8c2a13e517b64aa61e66d46288fc2e35016a5c38424a78db856a57f5434c"
+    },
+    "vc_loneu.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "3b5b79f47c1c314184793eb4a5266e2d6264f19097e8ea44d3c824247ac8e33c"
+    },
+    "vc_lowarm.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "c512196a6258322f723181820ccaf7d26cc4427377f2ed4cae9007999440ca78"
+    },
+    "vc_magenta1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "25ea9bf738d71777eeee6c64f40b9c198225ff16ec6ec17cff8c8a1f7dc61948"
+    },
+    "vc_magenta2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "978a1d95d54d5a38f0aae343e3aeeecd899cd5c0719f2635105f5fe12f96c646"
+    },
+    "vc_matrix1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "4a8badfd5bb4279999549e9661c8b4fddfc949ec371b6470b4806ba9ee6295ce"
+    },
+    "vc_matrix2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "f6fed6436121f7c7a777734f1635e98ea9c2adec047dce7b1f6c940055e625bf"
+    },
+    "vc_morning.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "11ab5019e0df6e8e3145ff224b7f9ddd4d455f5bae05d99c5b05d4d0fdf6c1ea"
+    },
+    "vc_nicest.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "5021621eafc0244f4d035659ddbf212c763b295abed708884b32f0b241a6a7b3"
+    },
+    "vc_rose1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "097ce7e096d1162f7957deb5cb3a4498abd29e84213143db322779ffb138d822"
+    },
+    "vc_rose2.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "84df9b64fdfb81415e952f99e1ea3de22cc18443134e52d70a8184d915ee4ecd"
+    },
+    "vc_sepia.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "733ae7c2b3bd1d9cf89f1030ac13429d6bf9a01a91bb66827d6d01c551d61f96"
+    },
+    "vc_steelblue.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "5196a1e542cd6569d43394c4dc0e1ead58a829bff4eff83d222542949bec9503"
+    },
+    "vc_straityel.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "a41cf5f6e8d3cc3551a91a54faf86e8532374b283db76be5f86a8eaa0b0e4d58"
+    },
+    "vc_vintage.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "d66799efd57228a3110377b6eea15a2e466929c150e9c0df52c80d871bc3b888"
+    },
+    "vc_warmdawn.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "9680b10f2bb508dd7077c87ffa16726aa1b84acb9a05048b80b5489ed6299b23"
+    },
+    "vc_winter.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "29b1491cb3b1dd05371a0e7eef1770baed615651d11c1a9c6ba34775d1626381"
+    }
+  }
+}

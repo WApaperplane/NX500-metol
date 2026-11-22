@@ -1,0 +1,942 @@
+#!/bin/sh
+# @gate script=lut.sh opens=rwdirect one_shot=0 gate=none pconly=0
+#=====================================================================
+# lut.sh — 3D LUT 滤镜（改登记表 + 写空闲槽 A18），独立于 filmlab
+#=====================================================================
+# 设计（2026-10-18 实机定案）：
+#   · 表放 A18（0x81119F00，A17 的邻居槽），原地写入，重启即复原
+#   · View4[1]/[3] + Still6[6] + BV12[12] 全部指向 A18 ⇒ 取景器与成片都生效
+#     （Still 有两条互斥分支，见 apply 段注释；两条都要改）
+#   · 与 filmlab 互不干扰：filmlab 走 PW 7 维标量（档位池 0xdc..0xe2），
+#     本脚本走 3D LUT 槽 + 登记表；两者可叠加
+#   · begin 备份、off 还原；apply 不覆盖首次备份
+#
+# 库管理（2026-11-01 新增）：
+#   · 顺序与收藏存在 $ST/order（SD 卡），一行一条，`*` 前缀 = 收藏
+#   · 删除是「移到 looks/_trash/」而不是 rm：exFAT 删同名文件会释放簇链，
+#     且重复目录项无法逐条清理，移动可逆、可由 PC 侧回收
+#   · list 输出顺序 = order 文件顺序；未登记的条目按名字追加在后面
+#
+# 用法：
+#   lut.sh list                 列出滤镜库（按 order 顺序，隐藏 _ 开头）
+#   lut.sh list --fav           只列收藏
+#   lut.sh apply <name>         应用（.cube 自动转换）
+#   lut.sh begin                预检 + 备份（不写相机内存）
+#   lut.sh off                  还原
+#   lut.sh status               当前状态
+#   lut.sh video on|off|status  录像 LUT 状态/诊断（正常随 apply/off 联动）
+#   lut.sh fav <name>           收藏/取消收藏（新收藏排到最前）
+#   lut.sh move <name> up|down|top   调整顺序
+#   lut.sh del <name>           移到 _trash/（不物理删除）
+#   lut.sh index                重建 order（清掉已消失的条目）
+#   lut.sh mix <A> <B> <0-100>  两表交叉混合：0=A，100=B
+#   lut.sh verify               对照 MANIFEST.txt 检查库是否被动过（missing/changed/extra）
+#   lut.sh prune [--dry-run]    清掉 obsolete.txt 里的旧批次（移到 _trash/，不删除）
+#   lut.sh strength <name> <0-100>   强度混合：0=原厂，100=该 look
+#   lut.sh stock                dump 原厂 A17 到 looks/_stock_A17.bin（强度 0 端）
+#=====================================================================
+set -u
+
+D=/opt/usr/nx-ks
+BB=$D/busybox
+TD=$D/lut                       # 工具目录（随包安装：scripts/lut -> /opt/usr/nx-ks/lut）
+LAB=/mnt/mmc/looks              # 滤镜库：*.cube / *.bin
+TRASH=$LAB/_trash               # 下架区（不是删除）
+# ★ 2026-11-13：状态目录一分为二。这张 exFAT 卡已经被 chkdsk 反复修过
+#   （state 里查出 556 个 order-N 副本），根因是「高频重写同名小文件」——
+#   exFAT 不回收旧目录项，删除也不做簇引用计数，写几次就留一堆悬空项，
+#   极端情况下 open+truncate 成功但数据落到空闲簇上，读回来就是 0 字节
+#   （2026-11-11 的 a18_orig.bin 0 字节事故就是这么来的）。
+#
+#   所以：凡是「重启就该忘掉」的东西一律放 tmpfs，SD 上只留真正需要跨开机的。
+#   这同时解决三件事：写入量降一个数量级、备份不可能被 exFAT 弄脏、
+#   每次重启后重新 dump 的必然是 A18 的真原厂值（内存已随重启复原）。
+# 注意：不能写 `. file 2>/dev/null` —— POSIX 规定非交互 shell 在 dot 读不到文件时
+# 直接退出，兜底根本轮不到执行（本机测出来的坑）。
+if [ -r /opt/usr/nx-ks/nxstore.sh ]; then . /opt/usr/nx-ks/nxstore.sh; fi
+command -v nx_ram >/dev/null 2>&1 || nx_ram() { _d=/tmp/nx/${1:-state}; mkdir -p "$_d" 2>/dev/null; echo "$_d"; }
+# 同理给 nx_put / nx_swap 留最小实现：老包 / 手工部署可能没有 nxstore.sh，
+# 但「写 SD」这件事无论在哪种安装形态下都不能裸 mv 覆盖（每次一个目录项尸体）。
+command -v nx_swap >/dev/null 2>&1 || nx_swap() {
+    [ -f "$1" ] || return 1
+    $BB rm -f "$2" 2>/dev/null
+    $BB mv -f "$1" "$2" 2>/dev/null
+}
+command -v nx_put >/dev/null 2>&1 || nx_put() {
+    [ -s "$1" ] || return 1
+    $BB cp -f "$1" "$2.tmp" 2>/dev/null || return 1
+    $BB sync 2>/dev/null
+    nx_swap "$2.tmp" "$2"
+}
+command -v nx_recover >/dev/null 2>&1 || nx_recover() { return 0; }
+command -v nx_remove >/dev/null 2>&1 || nx_remove() { $BB rm -f "$1"; }
+
+ST=$(nx_ram lut)                # 易失：还原点、日志、标志（tmpfs，重启即清）
+PD=/mnt/mmc/lut/state           # 持久：只有库顺序与转换缓存
+SLOT=0x81119F00                 # A18
+STOCK_SLOT=0x81115200           # A17 原厂表（强度 0 端基准）
+# ★ 目录名里的 nxwa 是历史落盘路径：nx_regtabwrite.arm 内硬编码同名路径，
+#   单改这里会让备份与读取落到两个目录，改名必须同步重编该二进制。
+BAKDIR=/mnt/mmc/nxwa_regtab_20261018   # 原厂登记表备份（Still6 / BV12）
+STILLBAK=$BAKDIR/still6_orig.bin
+BVBAK=$BAKDIR/bv12_orig.bin
+ORD=$PD/order                   # 库顺序 + 收藏
+CV=$PD/cv                       # .cube → native 转换缓存（混合时反复用同一张）
+
+# 工具查找：优先随包安装的 $TD，其次手工部署的 /mnt/mmc/lut
+pick_tool() {
+    for d in "$TD" /mnt/mmc/lut; do
+        [ -x "$d/$1" ] && { echo "$d/$1"; return 0; }
+    done
+    return 1
+}
+SLOTW=$(pick_tool nx_slotwrite.arm)
+REGT=$(pick_tool nx_regtabwrite.arm)
+CUBE=$(pick_tool cube2lut.arm)
+MIX=$(pick_tool lutmix.arm)
+KICK=$(pick_tool nx_lutload.arm)
+
+die() { echo "ERR $*"; exit 1; }
+
+# 关机取证（15.1 debug）：每次落地/还原往 SD 记一行，和 pwrlog.sh 的时间轴对齐。
+# 没装 pwrlog.sh 就静默跳过，绝不因为日志影响 apply。
+plog() {
+    [ -x "$D/pwrlog.sh" ] || return 0
+    # 8>&-：pwrlog 的 boot/start 会 setsid 常驻，别让它继承 LUT 锁
+    sh "$D/pwrlog.sh" note "LUT $*" >/dev/null 2>&1 8>&- || :
+}
+
+# ---------- 分段计时（NX_TIMING=1 才输出；默认零开销） ----------
+# 为什么需要：apply/off 的端到端耗时能从 nxui 日志的 elapsed_ms 看到，但
+# 「写槽 / 三张登记表 / 指针表 / kick / watcher」各占多少没有数据。
+# 要判断"首次启用与后续换表能否拆开"，必须先有这张分段表。
+# read 是 busybox 内建（不 fork），这里只有算术，对正常路径影响可忽略。
+_tm_ms() {
+    read -r _tm_up _ < /proc/uptime 2>/dev/null || { TM_NOW=0; return 1; }
+    _tm_i=${_tm_up%.*}; _tm_raw=${_tm_up#*.}
+    [ "$_tm_raw" = "$_tm_up" ] && _tm_raw=0
+    [ -n "$_tm_i" ] || _tm_i=0
+    # ★ 必须先记位数再去前导零：.05 的 n=2，去零后只剩 "5"。
+    # ★ 更关键的是去零本身：$((09)) 在 POSIX sh 里是八进制字面量，
+    #   会报 "Illegal number" 并让整个脚本退出 —— uptime 里 .05/.08 很常见。
+    _tm_n=${#_tm_raw}
+    _tm_f=$_tm_raw
+    while :; do
+        _tm_t=${_tm_f#0}
+        [ "$_tm_t" = "$_tm_f" ] && break
+        _tm_f=$_tm_t
+    done
+    [ -n "$_tm_f" ] || _tm_f=0
+    case "$_tm_n" in
+        1) _tm_f=$((_tm_f * 100)) ;;
+        2) _tm_f=$((_tm_f * 10)) ;;
+        3) ;;
+        *) _tm_f=0 ;;
+    esac
+    TM_NOW=$((_tm_i * 1000 + _tm_f))
+    return 0
+}
+tm() {
+    [ "${NX_TIMING:-0}" = 1 ] || return 0
+    _tm_ms || return 0
+    [ -n "${TM_T0:-}" ] || TM_T0=$TM_NOW
+    printf 'TIMING %-10s +%dms  total=%dms\n' \
+        "$1" "$((TM_NOW - ${TM_LAST:-$TM_T0}))" "$((TM_NOW - TM_T0))" >&2
+    TM_LAST=$TM_NOW
+    return 0
+}
+
+need_tools() {
+    [ -n "$SLOTW" ] && [ -x "$SLOTW" ] || die "missing nx_slotwrite.arm (looked in $TD and /mnt/mmc/lut)"
+    [ -n "$REGT" ]  && [ -x "$REGT" ]  || die "missing nx_regtabwrite.arm (looked in $TD and /mnt/mmc/lut)"
+}
+
+# ---------- 屏幕色彩（OLED_COLOR）随之开关 ----------
+# 2026-10-25 对照使用屏幕色彩关闭的分支，并保存/恢复用户原设置。
+# 旧 Noir 偏绿/品红已由 RGB 设计被直接作为 CrCbY 表消费复现并修正；
+# identity 中性、RGB 三分量相等都不能证明原生格式或后段处理正确。
+# 保留此开关管理以沿用已验证的分支，不把 OLED 当成已经确认的偏色根因。
+# 首次 apply 记下用户原值，off 时还原；prefman 不可用则静默跳过，不阻塞主流程。
+PREFMAN=$(command -v prefman 2>/dev/null || echo /usr/bin/prefman)
+
+oled_save() {
+    [ -x "$PREFMAN" ] || return 0
+    [ -f "$ST/oled_orig" ] && return 0
+    "$PREFMAN" get 0 0x0a704 l 2>/dev/null \
+        | $BB awk '/value *= */{print $3; exit}' > "$ST/oled_orig" 2>/dev/null
+    [ -s "$ST/oled_orig" ] || echo 1 > "$ST/oled_orig"
+    return 0
+}
+
+oled_put() {
+    [ -x "$PREFMAN" ] || return 0
+    "$PREFMAN" set 0 0x0a704 l "$1" >/dev/null 2>&1
+    return 0
+}
+
+oled_restore() {
+    [ -f "$ST/oled_orig" ] || return 0
+    v=$($BB tr -dc '0-9' < "$ST/oled_orig" 2>/dev/null)
+    [ -n "$v" ] && oled_put "$v"
+    $BB rm -f "$ST/oled_orig"
+    echo "OK screen-color restored to ${v:-1}"
+    return 0
+}
+
+# ---------- 库顺序 ----------
+# 名称合法性：面板会把名字原样当参数传回来，所以这里也要挡住路径与
+# shell 元字符（与 nxui 的 nx_key_valid 同口径）。'_' 开头是内部项
+# （_stock_A17 / _trash），不参与列表与排序。
+valid_name() {
+    case "$1" in
+        '') return 1 ;;
+        _*) return 1 ;;
+        */*|*\\*|*..*|*'|'*|*';'*|*'$'*|*'`'*) return 1 ;;
+    esac
+    return 0
+}
+
+# 重建 order：已登记且仍存在的保持顺序与星标，新文件按名字追加，消失的丢弃。
+order_sync() {
+    [ -d "$LAB" ] || return 0
+    $BB mkdir -p "$ST" "$PD" || return 1
+    nx_recover "$ORD" || return 1
+    $BB ls "$LAB" > "$ST/.ls" 2>/dev/null || return 1
+    $BB grep -E '\.(cube|bin)$' "$ST/.ls" \
+        | $BB sed 's/\.[^.]*$//' | $BB grep -v '^_' | $BB sort -u > "$ST/.names"
+    $BB rm -f "$ST/.ls"
+    if [ -s "$ORD" ]; then
+        $BB awk '
+            FILENAME==ARGV[1] { have[$0]=1; next }
+            { k=$0; sub(/^\*/,"",k)
+              if (!(k in have) || (k in seen)) next
+              seen[k]=1; print }
+        ' "$ST/.names" "$ORD" > "$ST/.order.1"
+        $BB awk '
+            FILENAME==ARGV[1] { k=$0; sub(/^\*/,"",k); seen[k]=1; next }
+            { if (($0 in seen) || ($0 ~ /^_/)) next; print }
+        ' "$ST/.order.1" "$ST/.names" > "$ST/.order.new"
+        $BB cat "$ST/.order.new" >> "$ST/.order.1"
+        $BB rm -f "$ST/.order.new"
+    else
+        : > "$ST/.order.1"
+        while IFS= read -r n; do
+            [ -n "$n" ] && printf '%s\n' "$n" >> "$ST/.order.1"
+        done < "$ST/.names"
+    fi
+    # ★ 内容没变就绝对不落盘。面板每次打开 LUT 列表都会跑 order_sync，
+    #   原来无条件 `mv -f` 覆盖 order —— 那是 state 目录里 556 个 order-N
+    #   副本（一次 chkdsk 批量改名的结果）的直接来源。
+    old=
+    [ -f "$ORD" ] && { old=$($BB md5sum < "$ORD" 2>/dev/null); old=${old%% *}; }
+    new=$($BB md5sum < "$ST/.order.1" 2>/dev/null); new=${new%% *}
+    if [ -n "${old:-}" ] && [ "$old" = "$new" ]; then
+        $BB rm -f "$ST/.order.1"
+    elif [ ! -s "$ST/.order.1" ]; then
+        # 空库：写一个 0 字节 order 没有意义（读侧本来就按「无 order」处理），
+        # 反而多一次目录项增删。直接删掉。
+        nx_remove "$ORD" || return 1
+    else
+        # ★ 这里原来是 `mv -f "$ST/.order.1" "$ORD"` —— 源在 tmpfs、目标在
+        #   exFAT，是跨文件系统的 rename+copy，中途掉电就留下半截 order。
+        nx_put "$ST/.order.1" "$ORD" || return 1
+        $BB rm -f "$ST/.order.1" 2>/dev/null
+    fi
+    $BB rm -f "$ST/.names"
+    return 0
+}
+
+# order 里的星标条目数（收藏是「前排」而不是另一个筛选维度）
+order_fav_count() {
+    [ -f "$ORD" ] || { echo 0; return 0; }
+    $BB grep -c '^\*' "$ORD" 2>/dev/null || echo 0
+}
+
+# Camera BusyBox 1.20.2 grep -x fails on exact lines; compare literal keys.
+order_has() {
+    $BB awk -v k="$1" '$0==k {found=1} END {exit !found}' "$ORD"
+}
+
+# ---------- 表路径解析（.cube 走缓存） ----------
+# 输出 native 表路径。混合/强度要反复用同一张表，每次重转 0.478 s 太贵，
+# 所以按 cksum 缓存：源文件没变就不重转。
+# 同名 .cube 优先（与 apply 一致），否则用 .bin。
+table_of() {
+    n=$1
+    src=
+    [ -f "$LAB/$n.cube" ] && src=$LAB/$n.cube
+    [ -z "$src" ] && [ -f "$LAB/$n.bin" ] && src=$LAB/$n.bin
+    # vlog 表放在 _vlog/（见 list --vlog）。名字全库唯一，所以 apply / mix /
+    # strength 这一套动词不用为它再各加一个 --vlog 参数 —— 面板换域只是换了
+    # 一份清单，落到这里就是「这个名字在 _vlog 里」。
+    [ -z "$src" ] && [ -f "$LAB/_vlog/$n.bin" ] && src=$LAB/_vlog/$n.bin
+    [ -n "$src" ] || return 1
+    case "$src" in
+        *.bin) echo "$src"; return 0 ;;
+    esac
+    [ -x "$CUBE" ] || die "missing $CUBE"
+    $BB mkdir -p "$CV"
+    sum=$($BB cksum "$src" 2>/dev/null | $BB awk '{print $1 "-" $2}')
+    cache=$CV/$n.bin
+    if [ ! -s "$cache" ] || [ "$(cat "$CV/$n.sum" 2>/dev/null)" != "$sum" ]; then
+        "$CUBE" "$src" "$cache" > "$ST/convert.log" 2>&1 \
+            || { cat "$ST/convert.log"; return 1; }
+        $BB grep -q '=== done ===' "$ST/convert.log" \
+            || { cat "$ST/convert.log"; return 1; }
+        printf '%s\n' "$sum" > "$CV/$n.sum"
+    fi
+    echo "$cache"
+    return 0
+}
+
+# ---------- 秒切：让 ISP 立刻重读槽（取代"半按一次"） ----------
+# 历史结论「不能从 ARM 侧强制 reload」只对"裸写 +0x00c + 脉冲"成立：
+#   · 漏写 +0x008 bit0（Acc）与 +0x004 的通道位 ⇒ 硬件收不到完整 Load ⇒ 花屏
+#   · 不复位 bit0 ⇒ 加载完画面停在异常，必须再清一次才恢复
+# nx_lutload.arm 复刻的是 p7 自己的 FUN_004a5c44 写序（OnOff → Acc → 地址 →
+# Cfg → bit8 置/清 → 收尾清 Acc），并用 EP 中断 ACC_3DLUT_RD_FINISH 等 DMA
+# 真正完成 ⇒ 实测可连续切换、切换瞬间无撕裂（2026-11-08 实机定案）。
+#
+# 失败不阻断：登记表此时已经写对了，用户半按一次仍然生效。
+kick_slot() {
+    [ "${LUT_NOKICK:-0}" = 1 ] && { echo "NOTE kick disabled (LUT_NOKICK=1); half-press once"; return 0; }
+    [ -n "$KICK" ] && [ -x "$KICK" ] || { echo "NOTE nx_lutload.arm missing; half-press once"; return 0; }
+    # 3DLUT 的 DMA 完成中断只有 ISP 在跑时才会来。di-camera-app 退出/息屏时
+    # 等它等于白等（还会让面板卡住），先判一次——这种情况下登记表已经写对，
+    # App 起来后 p7 自己的 Load 会拿到新表。
+    if ! $BB ps 2>/dev/null | $BB grep -q '[d]i-camera-app'; then
+        echo "NOTE camera app not running; the look applies on its next load"
+        return 0
+    fi
+    for try in 1 2 3; do
+        "$KICK" once "$1" > "$ST/kick.log" 2>&1 && { echo "OK instant switch (no half-press)"; return 0; }
+        sleep 0.2
+    done
+    $BB tail -3 "$ST/kick.log" 2>/dev/null
+    echo "WARN instant switch failed; half-press once (registry is already correct)"
+    return 0
+}
+
+# 按硬件此刻登记的地址 kick —— off 之后 p7 可能已经切回 A13/A17，
+# 不能再盲目写 A18（白名单里 A12..A19 都放行，见 nx_lutload.c）。
+kick_current() {
+    cur=$($BB devmem 0x2082b00c 32 2>/dev/null | $BB tr 'A-F' 'a-f')
+    case "$cur" in
+        0x81*) kick_slot "$cur" ;;
+        *)     kick_slot "$SLOT" ;;
+    esac
+}
+
+# ---------- 写槽 + 改三张登记表（apply 与 mix 共用） ----------
+commit_table() {
+    label=$1
+    table=$2
+    tm "enter"
+    # 先记"开始"：若日志里只有 start 没有同名的 apply 收尾，就说明断电发生在写表途中。
+    plog "apply start $label"
+    $BB mkdir -p "$ST" "$PD"
+    tm "plog"
+
+    # 关屏幕色彩（理由见 oled_save 注释）。放在写槽之前，保证生效那一刻起 ISP
+    # 只受 LUT 一层影响。
+    oled_save
+    oled_put 0
+    tm "oled"
+
+    # 首次进入时若未备份，先建立本次会话的还原点（不写 LUT）
+    if [ ! -f "$ST/ready" ]; then
+        sh "$0" begin || die "backup failed"
+    fi
+    tm "begin"
+
+    "$SLOTW" write "$SLOT" "$table" > "$ST/write.log" 2>&1 \
+        || { cat "$ST/write.log"; die "slot write failed"; }
+    $BB grep -q 'READBACK ok' "$ST/write.log" || { cat "$ST/write.log"; die "slot write not verified"; }
+    tm "slotwrite"
+
+    # View4 四项一次写全（色彩空间 × 屏幕色彩 四种组合都会命中）：
+    #   [0] A12 AdobeRGB+开   [1] A13 sRGB+开
+    #   [2] A14 AdobeRGB+关   [3] A17 sRGB+关
+    # 只写 [1]/[3] 会让 AdobeRGB 下取景仍是原厂表。
+    "$REGT" view-set "$SLOT" > "$ST/view.log" 2>&1 || { cat "$ST/view.log"; die "view registry write failed (stale nx_regtabwrite.arm?)"; }
+    $BB grep -q 'READBACK ok' "$ST/view.log" || { cat "$ST/view.log"; die "view registry write not verified"; }
+    tm "view"
+    # Still（成片）有两条互斥的选表分支（p7 0x80382B30）：
+    #   +0x21 == 1（屏幕色彩开启）→ BV12 十二项
+    #   否则                        → Still6 六项
+    # 只改 Still6 会出现「取景有滤镜、照片没有」，所以两条都指向工作槽。
+    $BB mkdir -p "$BAKDIR" || die "cannot create $BAKDIR"
+    if [ -f "$STILLBAK" ]; then
+        "$REGT" still-write "$SLOT" > "$ST/still.log" 2>&1
+    else
+        "$REGT" still-set  "$SLOT" > "$ST/still.log" 2>&1
+    fi
+    $BB grep -q 'READBACK ok' "$ST/still.log" || { cat "$ST/still.log"; die "still6 registry write failed"; }
+    tm "still"
+    if [ -f "$BVBAK" ]; then
+        "$REGT" bv-write "$SLOT" > "$ST/bv.log" 2>&1
+    else
+        "$REGT" bv-set  "$SLOT" > "$ST/bv.log" 2>&1
+    fi
+    $BB grep -q 'READBACK ok' "$ST/bv.log" || { cat "$ST/bv.log"; die "bv12 registry write failed (stale nx_regtabwrite.arm?)"; }
+    tm "bv"
+
+    # ★ 秒切：登记表写完后立刻让 ISP 重读槽，不再要求用户半按快门。
+    #   历史结论「reload 是禁区」针对的是"裸写 +0x00c + 脉冲"——那种写法漏了
+    #   Acc 与 Cfg 通道位、也不复位 bit0，所以花屏。详见 kick_slot 注释。
+    printf '%s\n' "$label" > "$ST/current"
+    # ★ 录像首帧：p7 开录时把 3DLUT 的 LUT0 指向它自己的档位表（实测在
+    #   0x81158C00 / 0x8113BE00 之间随场景变），不是 A18。把这张 23 项指针表
+    #   整体指到 A18，录像一开始读到的就是我们的表，不再需要开录后补写。
+    #   失败不阻断 apply：照片与取景走 View4/Still6，不依赖这张表。
+    if [ -x "$D/lut/nx_lutptr.arm" ]; then
+        "$D/lut/nx_lutptr.arm" save "$ST/lutptr.bak" > "$ST/lutptr.log" 2>&1 || true
+        if ! "$D/lut/nx_lutptr.arm" set "$SLOT" >> "$ST/lutptr.log" 2>&1; then
+            echo "WARN lutptr: video first frame may not carry the LUT (see $ST/lutptr.log)"
+        fi
+    fi
+    # 秒切放在起 watcher 之前：watcher 的录像补载会抢同一把 nx_lutload 锁。
+    tm "lutptr"
+    kick_slot "$SLOT"
+    tm "kick"
+    # Applying a look is the one user-facing switch for photo and video LUTs.
+    # The watcher is per-boot and stops with LUT off; no second UI entry needed.
+    if [ -x "$D/lut_video.sh" ]; then
+        # 8>&-：不让常驻 watcher 继承 LUT 锁的 fd（见 lut_lock 注释）
+        sh "$D/lut_video.sh" on 0 > "$ST/video.log" 2>&1 8>&- || {
+            cat "$ST/video.log"
+            die "LUT applied, but video auto-load could not start"
+        }
+    fi
+    tm "video"
+    echo "OK applied $label"
+    plog "apply $label"
+}
+
+# ---------- 写操作全局互斥 ----------
+# ★ 2026-11-22：原来只有 list/fav/move/index/del 走 library.lock，
+#   apply/off/begin/mix/strength/blend 全裸。两路并发（面板点一下 + 命令行，
+#   或 apply 还没结束时又点一次）会同时写 A18、改三张登记表、交叉 kick；
+#   最糟的是 begin 在并发下把【已被改过的 A18】当成原厂存进还原点，
+#   之后「还原原厂」永远回不去，且不会自愈。
+#
+#   重入：apply -> commit_table -> `sh $0 begin` -> `sh $0 off`，
+#   子进程必须继承锁而不是重新申请，否则自死锁。用 LUT_LOCKED 传递。
+#
+#   ★ fd 8 会被子进程继承。lut_video.sh 启动的 watcher 是常驻进程，
+#   它若拿着锁不放，之后所有 LUT 操作都会卡住 —— 调用处一律加 8>&-。
+lut_lock() {
+    [ "${LUT_LOCKED:-0}" = 1 ] && return 0
+    [ -d "$ST" ] || $BB mkdir -p "$ST" 2>/dev/null || return 1
+    [ -e "$ST/lut.lock" ] || : > "$ST/lut.lock" 2>/dev/null || return 1
+    exec 8>"$ST/lut.lock" || return 1
+    _lk=0
+    while ! $BB flock -n 8; do
+        _lk=$((_lk + 1))
+        # 40 x 0.25s = 10s。面板点一下最多等这么久，再等就该报错而不是挂住。
+        [ "$_lk" -le 40 ] || return 1
+        $BB usleep 250000 2>/dev/null || $BB sleep 1
+    done
+    LUT_LOCKED=1
+    export LUT_LOCKED
+    return 0
+}
+
+# 非阻塞版本：拿不到就立刻返回，不含等待。
+# 给 list 用 —— 面板每次启动都会调它，不能为列个表去等一把可能被
+# apply 持有 30s 的锁。
+lut_lock_try() {
+    [ "${LUT_LOCKED:-0}" = 1 ] && return 0
+    [ -d "$ST" ] || $BB mkdir -p "$ST" 2>/dev/null || return 1
+    [ -e "$ST/lut.lock" ] || : > "$ST/lut.lock" 2>/dev/null || return 1
+    exec 8>"$ST/lut.lock" || return 1
+    $BB flock -n 8 || return 1
+    LUT_LOCKED=1
+    export LUT_LOCKED
+    return 0
+}
+
+case "${1:-status}" in
+list)
+    # 只读动词：拿到锁就顺手维护 order；拿不到就按现有 order 输出。
+    # 两个都写 order（fav/move/del）的进程互斥，但读的一方不阻塞。
+    LUT_LIST_UNLOCKED=0
+    lut_lock_try || LUT_LIST_UNLOCKED=1
+    ;;
+fav|move|index|del|apply|begin|off|mix|strength|blend|prune)
+    lut_lock || die "another LUT operation is in progress (lock: $ST/lut.lock)"
+    ;;
+esac
+
+case "${1:-status}" in
+video)
+    shift
+    [ -x "$D/lut_video.sh" ] || die "missing lut_video.sh"
+    sh "$D/lut_video.sh" "$@"
+    ;;
+list)
+    # `list --vlog` 列 /mnt/mmc/looks/_vlog（对数域输入的表，单独一页签）。
+    # 下划线目录本来就是内部件，标准列表不会带出它们。
+    if [ "${2:-}" = "--vlog" ]; then
+        VLAB=$LAB/_vlog
+        [ -d "$VLAB" ] || exit 0
+        for f in "$VLAB"/*.bin; do
+            [ -f "$f" ] || continue
+            k=$(basename "$f" .bin)
+            case "$k" in _*) continue;; esac
+            echo "$k"
+        done
+        exit 0
+    fi
+    [ -d "$LAB" ] || die "no $LAB"
+    if [ "${LUT_LIST_UNLOCKED:-0}" = 1 ]; then
+        # 另一个 LUT 操作在跑：不重建 order（重建要写盘），直接按现有内容输出。
+        # 已下架条目的残留留给下一次拿到锁的 list/index 清理。
+        :
+    else
+        order_sync || die "cannot update order"
+    fi
+    only_fav=0
+    [ "${2:-}" = "--fav" ] && only_fav=1
+    # order 文件在空库时会被 order_sync 删掉（空库没有顺序可言），
+    # 所以这里不能再假定它存在 —— 少这个判断，`done < $ORD` 会在
+    # 新卡第一次打开列表时打一行 "cannot open ... No such file"。
+    if [ -f "$ORD" ]; then
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            key=${line#\*}
+            if [ $only_fav -eq 1 ]; then
+                case "$line" in \**) ;; *) continue ;; esac
+            fi
+            echo "$key"
+        done < "$ORD"
+    fi
+    ;;
+
+fav)
+    name=${2:-}
+    valid_name "$name" || die "bad name"
+    [ -d "$LAB" ] || die "no $LAB"
+    order_sync || die "cannot update order"
+    if order_has "*$name"; then
+        # 取消收藏：去掉星标，留在原位（不做位置回弹，用户调过的顺序不被打乱）
+        $BB awk -v k="$name" '{ if ($0 == "*" k) print k; else print }' "$ORD" > "$ST/.o"
+        nx_swap "$ST/.o" "$ORD" || die "cannot update order"
+        echo "OK unfav $name"
+    else
+        # 新收藏 = 排到最前（收藏是「前排」语义，不是筛选维度）
+        $BB awk -v k="$name" 'BEGIN { print "*" k }
+                              { if ($0 == k || $0 == "*" k) next; print }' "$ORD" > "$ST/.o"
+        nx_swap "$ST/.o" "$ORD" || die "cannot update order"
+        echo "OK fav $name"
+    fi
+    ;;
+
+move)
+    name=${2:-}; dir=${3:-up}
+    valid_name "$name" || die "bad name"
+    order_sync || die "cannot update order"
+    order_has "$name" || order_has "*$name" \
+        || die "not in library: $name"
+    $BB awk -v k="$name" -v dir="$dir" '
+        { line[NR]=$0; key[NR]=$0; sub(/^\*/,"",key[NR]) }
+        END {
+            pos=0
+            for (i=1;i<=NR;i++) if (key[i]==k) { pos=i; break }
+            if (dir=="top") {
+                if (pos>1) { t=line[pos]; for (i=pos;i>1;i--) line[i]=line[i-1]; line[1]=t }
+            } else if (dir=="up") {
+                if (pos>1) { t=line[pos]; line[pos]=line[pos-1]; line[pos-1]=t }
+            } else if (dir=="down") {
+                if (pos<NR) { t=line[pos]; line[pos]=line[pos+1]; line[pos+1]=t }
+            }
+            for (i=1;i<=NR;i++) print line[i]
+        }
+    ' "$ORD" > "$ST/.o"
+    nx_swap "$ST/.o" "$ORD" || die "cannot update order"
+    echo "OK moved $name $dir"
+    ;;
+
+index)
+    [ -d "$LAB" ] || die "no $LAB"
+    order_sync || die "cannot update order"
+    _n=0
+    [ -f "$ORD" ] && _n=$($BB wc -l < "$ORD" 2>/dev/null | $BB tr -d ' ')
+    echo "OK order rebuilt: ${_n:-0} entries, $(order_fav_count) fav"
+    ;;
+
+del)
+    name=${2:-}
+    valid_name "$name" || die "bad name"
+    [ -d "$LAB" ] || die "no $LAB"
+    moved=
+    $BB mkdir -p "$TRASH"
+    for ext in cube bin; do
+        if [ -f "$LAB/$name.$ext" ]; then
+            # exFAT 上「rename 覆盖已存在目标」每次留一个悬空目录项
+            # （nxstore.sh 开头那 556 个 order-N 就是这笔账）。先删目标再改名。
+            $BB rm -f "$TRASH/$name.$ext" 2>/dev/null
+            $BB mv -f "$LAB/$name.$ext" "$TRASH/$name.$ext" || die "cannot move $name.$ext"
+            moved="$moved $name.$ext"
+        fi
+    done
+    [ -n "$moved" ] || die "not found: $name (.cube or .bin)"
+    $BB rm -f "$CV/$name.bin" "$CV/$name.sum" 2>/dev/null
+    order_sync || die "look moved to trash, cannot update order"
+    # 正在生效的就是它 ⇒ 一并还原，否则登记表指向一张已下架的表
+    if [ -f "$ST/current" ] && [ "$(cat "$ST/current")" = "$name" ]; then
+        sh "$0" off >/dev/null 2>&1 && echo "OK active look removed, restored to factory"
+    fi
+    echo "OK trashed:$moved"
+    echo "NEXT recover from $TRASH on a PC if this was a mistake"
+    ;;
+
+stock)
+    need_tools
+    [ -d "$LAB" ] || die "no $LAB"
+    "$SLOTW" read "$STOCK_SLOT" "$LAB/_stock_A17.bin" > "$ST/stock.log" 2>&1 \
+        || { cat "$ST/stock.log"; die "stock dump failed"; }
+    $BB grep -q 'SLOT dumped' "$ST/stock.log" || { cat "$ST/stock.log"; die "stock dump not confirmed"; }
+    echo "OK stock A17 dumped to $LAB/_stock_A17.bin ($($BB wc -c < "$LAB/_stock_A17.bin" | $BB tr -d ' ') bytes)"
+    ;;
+
+mix)
+    a=${2:-}; b=${3:-}; pct=${4:-}
+    valid_name "$a" || die "bad A"
+    valid_name "$b" || die "bad B"
+    case "$pct" in ''|*[!0-9]*) die "usage: lut.sh mix <A> <B> <0-100>" ;; esac
+    [ "$pct" -le 100 ] || die "percent must be 0..100"
+    need_tools
+    [ -n "$MIX" ] && [ -x "$MIX" ] || die "missing lutmix.arm (looked in $TD and /mnt/mmc/lut)"
+    ta=$(table_of "$a") || die "cannot resolve A: $a"
+    tb=$(table_of "$b") || die "cannot resolve B: $b"
+    $BB mkdir -p "$ST" "$PD"
+    perm=$((pct * 10))
+    "$MIX" "$ta" "$tb" "$perm" "$ST/mix.bin" > "$ST/mix.log" 2>&1 \
+        || { cat "$ST/mix.log"; die "lutmix failed"; }
+    $BB grep -q '=== done ===' "$ST/mix.log" || { cat "$ST/mix.log"; die "lutmix not confirmed"; }
+    commit_table "mix:${a}+${b}@${pct}%" "$ST/mix.bin"
+    ;;
+
+strength)
+    name=${2:-}; pct=${3:-}
+    valid_name "$name" || die "bad name"
+    case "$pct" in ''|*[!0-9]*) die "usage: lut.sh strength <name> <0-100>" ;; esac
+    [ "$pct" -le 100 ] || die "percent must be 0..100"
+    need_tools
+    [ -n "$MIX" ] && [ -x "$MIX" ] || die "missing lutmix.arm (looked in $TD and /mnt/mmc/lut)"
+    # 0 端 = 原厂 A17（白点 206,207,240）。没有 dump 过就退到 identity，
+    # 并在输出里说明——identity 是 255 白点，拉到 0% 会比平时更冷更亮。
+    if [ -f "$LAB/_stock_A17.bin" ]; then
+        base=$LAB/_stock_A17.bin
+        base_label=stock
+    else
+        base=$ST/identity.bin
+        if [ ! -s "$base" ]; then
+            "$MIX" --identity "$base" > "$ST/identity.log" 2>&1 \
+                || { cat "$ST/identity.log"; die "identity build failed"; }
+        fi
+        base_label=identity
+        echo "WARN no _stock_A17.bin; 0% uses identity (colder/brighter than factory)"
+        echo "HINT run: sh $0 stock"
+    fi
+    ta=$(table_of "$name") || die "cannot resolve: $name"
+    $BB mkdir -p "$ST" "$PD"
+    perm=$((pct * 10))
+    "$MIX" "$base" "$ta" "$perm" "$ST/mix.bin" > "$ST/mix.log" 2>&1 \
+        || { cat "$ST/mix.log"; die "lutmix failed"; }
+    $BB grep -q '=== done ===' "$ST/mix.log" || { cat "$ST/mix.log"; die "lutmix not confirmed"; }
+    commit_table "strength:${name}@${pct}%($base_label)" "$ST/mix.bin"
+    ;;
+
+# 双 LUT 各自强度：两张表各有一个强度，但落到表上只有一步 ——
+#   T = base + s * (mix(A,B,r) − base)        s = min(sa+sb, 100),  r = sb/(sa+sb)
+# 这正是「归一加权」语义（docs/current/DUAL_STRENGTH_2026-11-02.md §2）：两张表
+# 按比例混成一张，再整体按总强度施加。好处是任何组合都不会外推出 0..255，
+# 且与 A/B 的顺序无关。两次 lutmix 调用，不需要新工具。
+blend)
+    a=${2:-}; ar=${3:-}; b=${4:-}; bs=${5:-}
+    valid_name "$a" || die "bad A"
+    valid_name "$b" || die "bad B"
+    case "$ar" in ''|*[!0-9]*) die "usage: lut.sh blend <A> <r 0-100> <B> <s 0-100>" ;; esac
+    case "$bs" in ''|*[!0-9]*) die "usage: lut.sh blend <A> <r 0-100> <B> <s 0-100>" ;; esac
+    [ "$ar" -le 100 ] || die "r must be 0..100"
+    [ "$bs" -le 100 ] || die "s must be 0..100"
+    need_tools
+    [ -n "$MIX" ] && [ -x "$MIX" ] || die "missing lutmix.arm (looked in $TD and /mnt/mmc/lut)"
+    ta=$(table_of "$a") || die "cannot resolve A: $a"
+    tb=$(table_of "$b") || die "cannot resolve B: $b"
+    if [ -f "$LAB/_stock_A17.bin" ]; then
+        base=$LAB/_stock_A17.bin
+        base_label=stock
+    else
+        base=$ST/identity.bin
+        base_label=identity
+        if [ ! -s "$base" ]; then
+            "$MIX" --identity "$base" > "$ST/identity.log" 2>&1 \
+                || { cat "$ST/identity.log"; die "identity build failed"; }
+        fi
+        echo "WARN no _stock_A17.bin; 0 strength uses identity (colder/brighter than factory)"
+        echo "HINT run: sh $0 stock"
+    fi
+    $BB mkdir -p "$ST" "$PD"
+    # 中间表放 /tmp（内存）：这是两次连续运算的临时产物，不该落到 exFAT 上。
+    mid=/tmp/.lutblend.$$
+    "$MIX" "$ta" "$tb" $((ar * 10)) "$mid" > "$ST/blend.log" 2>&1 \
+        || { cat "$ST/blend.log"; $BB rm -f "$mid"; die "blend step1 (mix) failed"; }
+    $BB grep -q '=== done ===' "$ST/blend.log" \
+        || { cat "$ST/blend.log"; $BB rm -f "$mid"; die "blend step1 not confirmed"; }
+    "$MIX" "$base" "$mid" $((bs * 10)) "$ST/mix.bin" > "$ST/blend.log" 2>&1 \
+        || { cat "$ST/blend.log"; $BB rm -f "$mid"; die "blend step2 (strength) failed"; }
+    $BB grep -q '=== done ===' "$ST/blend.log" \
+        || { cat "$ST/blend.log"; $BB rm -f "$mid"; die "blend step2 not confirmed"; }
+    $BB rm -f "$mid"
+    commit_table "blend:${a}+${b} r=${ar}% s=${bs}%($base_label)" "$ST/mix.bin"
+    ;;
+
+begin)
+    need_tools
+    $BB mkdir -p "$ST" "$PD" || die "cannot create $ST"
+    # 每次进入都重新取一份"当前状态"作为本次会话的还原点。
+    # 但有两种例外：
+    #   · 上次是半按关闭（keep 标记）⇒ 用户要保留这个 look，沿用同一份备份
+    #   · 上次异常退出（ready 残留但无 keep）⇒ 先还原，避免把已改状态当原厂
+    if [ -f "$ST/ready" ]; then
+        if [ -f "$ST/keep" ]; then
+            $BB rm -f "$ST/keep"
+            echo "OK resumed (look kept, previous backup reused)"
+            exit 0
+        fi
+        # ★ 这里以前不查退出码：off 失败一次，下面就把「已经被改过的 A18」
+        #   当成原厂表存进 a18_orig.bin，之后「还原原厂」永远回不去，且不可自愈。
+        #   非 0 一律中止，绝不覆盖备份。
+        sh "$0" off > "$ST/previous-off.log" 2>&1 \
+            || { cat "$ST/previous-off.log"; die "previous look not restored (off failed); backup NOT replaced"; }
+        if [ -f "$ST/current" ]; then
+            die "off returned 0 but a look is still active; backup NOT replaced"
+        fi
+    fi
+    "$SLOTW" read "$SLOT" "$ST/a18_orig.bin" > "$ST/begin.log" 2>&1 \
+        || { cat "$ST/begin.log"; die "slot backup failed"; }
+    $BB grep -q 'SLOT dumped' "$ST/begin.log" || { cat "$ST/begin.log"; die "slot backup not confirmed"; }
+    : > "$ST/ready"
+    echo "OK backup written to $ST/a18_orig.bin"
+    ;;
+
+verify)
+    # 对照 MANIFEST.txt：库是不是被动过。只读，不写相机、不改库。
+    # 判据三档：MISSING（该有却没有）/ CHANGED（同名不同内容）/ EXTRA（卡上多出来的，
+    # 多半是用户自己加的，不算错 —— 但如果你没加过，就是旧批次没清干净）。
+    [ -d "$LAB" ] || die "no $LAB"
+    [ -f "$LAB/MANIFEST.txt" ] || die "no $LAB/MANIFEST.txt（这个包缺定档清单）"
+    $BB mkdir -p "$ST" "$PD" || die "cannot create $ST"
+    seen=$ST/.verify-seen
+    lf=$ST/.manifest.lf
+    # 去 CR：Windows 上编辑过的 txt 会带 \r，busybox 的 read 不会自己吃
+    $BB tr -d '\r' < "$LAB/MANIFEST.txt" > "$lf" || die "cannot read MANIFEST.txt"
+    : > "$seen"
+    n=0; miss=0; chg=0; extra=0
+    while read -r sum size name; do
+        case "${sum:-}" in ''|\#*) continue ;; esac
+        [ -n "${name:-}" ] || continue
+        n=$((n + 1))
+        printf '%s\n' "$name" >> "$seen"
+        if [ ! -f "$LAB/$name" ]; then
+            echo "MISSING $name"
+            miss=$((miss + 1))
+            continue
+        fi
+        got=$($BB md5sum "$LAB/$name" 2>/dev/null); got=${got%% *}
+        if [ "$got" != "$sum" ]; then
+            echo "CHANGED $name"
+            chg=$((chg + 1))
+        fi
+    done < "$lf"
+    for f in "$LAB"/*.bin; do
+        [ -f "$f" ] || continue
+        b=${f##*/}
+        # `_` 开头是内部件（_stock_A17 是 lut.sh stock 的 dump，_trash 是目录），不算 EXTRA
+        case "$b" in _*) continue ;; esac
+        # busybox 1.20.2 的 grep -x 不可靠，用 awk 精确比一行（同 order_has）
+        $BB awk -v k="$b" '$0 == k { found = 1 } END { exit !found }' "$seen" && continue
+        echo "EXTRA $b"
+        extra=$((extra + 1))
+    done
+    $BB rm -f "$seen" "$lf"
+    echo "SUMMARY manifest=$n missing=$miss changed=$chg extra=$extra"
+    [ "$miss" = 0 ] && [ "$chg" = 0 ] || exit 1
+    ;;
+
+prune)
+    # 清旧批次：obsolete.txt 里列出、卡上还存在的，移到 _trash/（移动，不删）。
+    # 发布包解压是"覆盖不删除"，旧表会一直赖在卡上 —— 这就是"旧 lut 还在用"的来源。
+    dry=0
+    [ "${2:-}" = --dry-run ] && dry=1
+    [ -d "$LAB" ] || die "no $LAB"
+    [ -f "$LAB/obsolete.txt" ] || die "no $LAB/obsolete.txt（这个包缺旧表清单）"
+    moved=0; kept=0
+    lf=$ST/.obsolete.lf
+    $BB mkdir -p "$ST" "$PD" || die "cannot create $ST"
+    $BB tr -d '\r' < "$LAB/obsolete.txt" > "$lf" || die "cannot read obsolete.txt"
+    while IFS= read -r name; do
+        case "${name:-}" in ''|\#*) continue ;; esac
+        [ -f "$LAB/$name" ] || { kept=$((kept + 1)); continue; }
+        if [ "$dry" = 1 ]; then
+            echo "WOULD-MOVE $name"
+            moved=$((moved + 1))
+            continue
+        fi
+        $BB mkdir -p "$TRASH" || die "cannot create $TRASH"
+        # 同 del：先删目标，避免 exFAT 上的覆盖式 rename 留下悬空目录项
+        $BB rm -f "$TRASH/$name" 2>/dev/null
+        if $BB mv -f "$LAB/$name" "$TRASH/$name"; then
+            echo "MOVED $name"
+            moved=$((moved + 1))
+        else
+            echo "FAILED $name"
+        fi
+    done < "$lf"
+    if [ "$dry" = 1 ]; then
+        echo "DRY-RUN would-move=$moved (already-clean=$kept)"
+        exit 0
+    fi
+    if [ "$moved" -gt 0 ]; then
+        $BB sync 2>/dev/null
+        plog "prune moved=$moved"
+    fi
+    $BB rm -f "$lf"
+    echo "OK pruned=$moved already-clean=$kept -> $TRASH"
+    ;;
+
+apply)
+    name=${2:-}
+    [ -n "$name" ] || die "usage: lut.sh apply <name>"
+    need_tools
+    [ -d "$LAB" ] || die "no $LAB"
+    table=$(table_of "$name") || die "not found: $name (.cube or .bin)"
+    commit_table "$name" "$table"
+    ;;
+
+off)
+    # 登记表原厂值在卡上丢了的话，从随包副本补回。nx_regtabwrite.arm 里那两条
+    # 路径是编译期硬编码的，脚本没法改，只能保证文件在那儿——否则 still/bv
+    # 两项会被静默跳过，界面却照样报成功。
+    for _f in still6_orig.bin bv12_orig.bin; do
+        if [ ! -f "$BAKDIR/$_f" ] && [ -f "$TD/factory/$_f" ]; then
+            $BB mkdir -p "$BAKDIR" 2>/dev/null
+            $BB cp -f "$TD/factory/$_f" "$BAKDIR/$_f" 2>/dev/null \
+                && echo "NOTE re-seeded $_f from package"
+        fi
+    done
+    need_tools
+    tm "enter"
+    if [ -x "$D/lut_video.sh" ]; then
+        sh "$D/lut_video.sh" off 8>&- || die "could not stop video LUT watcher"
+    fi
+    tm "videostop"
+    # 指针表先于登记表恢复：让 p7 的档位选择回到内置表，再还原 View4/Still6/A18
+    if [ -x "$D/lut/nx_lutptr.arm" ] && [ -f "$ST/lutptr.bak" ]; then
+        "$D/lut/nx_lutptr.arm" restore "$ST/lutptr.bak" > "$ST/off-lutptr.log" 2>&1 || true
+    fi
+    tm "lutptr"
+    # 真的没事可做 = 没有还原点，也没有正在生效的 look。只要有 current，
+    # 内存里就确实挂着一张 LUT，不能因为还原点丢了就假装完成。
+    if [ ! -f "$ST/a18_orig.bin" ] && [ ! -f "$ST/current" ]; then
+        echo "OK nothing to restore"
+        exit 0
+    fi
+    rc=0
+    # View4 四项写回原厂（[0]A12 [1]A13 [2]A14 [3]A17）
+    "$REGT" view-restore > "$ST/off-view.log" 2>&1 || rc=1
+    tm "view"
+    if [ -f "$STILLBAK" ]; then
+        "$REGT" still-restore > "$ST/off-still.log" 2>&1 || rc=1
+    fi
+    tm "still"
+    if [ -f "$BVBAK" ]; then
+        "$REGT" bv-restore > "$ST/off-bv.log" 2>&1 || rc=1
+    fi
+    tm "bv"
+    # A18 写回源：优先本次会话 dump 的还原点，它坏了退到随包原厂基线。
+    # 0 字节的还原点以前只打一句 WARN 就跳过 —— 用户若不重启相机，A18 里
+    # 躺的还是那张 LUT，面板却报「已还原原厂表」，等于说谎。
+    A18SRC=
+    A18HOW=
+    if [ -s "$ST/a18_orig.bin" ]; then
+        A18SRC=$ST/a18_orig.bin; A18HOW=session
+    elif [ -s "$TD/factory/a18_orig.bin" ]; then
+        A18SRC=$TD/factory/a18_orig.bin; A18HOW=factory
+    fi
+    if [ -n "$A18SRC" ]; then
+        [ "$A18HOW" = factory ] && echo "NOTE A18 restore point unusable; writing package baseline"
+        "$SLOTW" restore "$SLOT" "$A18SRC" > "$ST/off-slot.log" 2>&1 || rc=1
+    else
+        # 连随包基线都没有（安装缺件）。登记表已还原，A18 这一格等重启复原。
+        echo "WARN no usable A18 restore point (session dump and package baseline both missing); A18 stays loaded until reboot" > "$ST/off-slot.log"
+    fi
+    tm "slot"
+    if [ $rc -ne 0 ]; then
+        # 日志平时在 tmpfs（不写卡），但失败必须留下能带走的证据：
+        # 这次 0 字节事故就是因为现场日志全在 /tmp，重启后一无所获。
+        $BB mkdir -p "$PD/last-failure" 2>/dev/null
+        for _l in "$ST"/off-view.log "$ST"/off-still.log "$ST"/off-bv.log "$ST"/off-slot.log "$ST"/off-lutptr.log; do
+            [ -f "$_l" ] && $BB cp -f "$_l" "$PD/last-failure/" 2>/dev/null
+        done
+        echo "ERR restore incomplete; see $PD/last-failure/ (临时副本在 $ST/off-*.log，重启即失)"
+        exit 1
+    fi
+    # ★ 还原也走秒切。先恢复屏幕色彩（这一步本身可能让 p7 重新选表），
+    #   再按硬件当前登记的地址 kick —— off 后 p7 可能已切回 A13/A17，
+    #   盲目 kick A18 会把画面留在"原厂 A18"而不是 p7 认定的那一档。
+    $BB rm -f "$ST/ready" "$ST/current" "$ST/keep"
+    oled_restore
+    tm "oled"
+    kick_current
+    tm "kick"
+    case "$A18HOW" in
+        session) _a18="A18=original" ;;
+        factory) _a18="A18=factory baseline" ;;
+        *)       _a18="A18 skipped (back to factory on reboot)" ;;
+    esac
+    echo "OK restored (view=4 factory, still=BV12+Still6 factory, $_a18)"
+    plog "off"
+    ;;
+
+status)
+    need_tools
+    if [ -f "$ST/current" ]; then
+        echo "ACTIVE $(cat "$ST/current")"
+    else
+        echo "IDLE"
+    fi
+    echo "BACKUP $([ -f "$ST/a18_orig.bin" ] && echo present || echo absent)"
+    echo "STOCK  $([ -f "$LAB/_stock_A17.bin" ] && echo present || echo absent)"
+    echo "LIB    $([ -f "$ORD" ] && $BB grep -c . "$ORD" 2>/dev/null || echo 0) entries, $([ -f "$ORD" ] && order_fav_count || echo 0) fav"
+    "$REGT" status 2>/dev/null | $BB sed -n '2,4p'
+    # 引擎实际指向哪个槽（0x2082b00c = 3DLUT 表指针）。
+    # apply/off 现在会自己 kick 一次，指针应等于刚写入的槽；若指针与
+    # 登记表不一致，说明 kick 没跑成（LUT_NOKICK=1 或工具缺失）。
+    ENG=$($BB devmem 0x2082b00c 32 2>/dev/null | $BB tr 'A-F' 'a-f')
+    if [ -n "$ENG" ]; then
+        echo "ENGINE $ENG  (3DLUT 当前表指针)"
+        [ "${LUT_NOKICK:-0}" = 1 ] && echo "NOTE   kick disabled (LUT_NOKICK=1): half-press once after apply"
+    fi
+    if [ -x "$D/lut/nx_lutptr.arm" ]; then
+        if "$D/lut/nx_lutptr.arm" check "$SLOT" >/dev/null 2>&1; then
+            echo "VIDEOPTR 23 slots -> A18 (recording starts with the LUT)"
+        else
+            echo "VIDEOPTR not redirected (first frames may miss the LUT)"
+        fi
+    fi
+    if [ -x "$D/lut_video.sh" ]; then sh "$D/lut_video.sh" status; fi
+    ;;
+
+*)
+    echo "usage: lut.sh list [--fav]|begin|apply <name>|off|status"
+    echo "       lut.sh fav <name>|move <name> up|down|top|del <name>|index"
+    echo "       lut.sh mix <A> <B> <0-100>|strength <name> <0-100>|stock"
+    echo "       lut.sh video on [seconds]|off|status"
+    echo "       lut.sh verify | prune [--dry-run]"
+    exit 2
+    ;;
+esac

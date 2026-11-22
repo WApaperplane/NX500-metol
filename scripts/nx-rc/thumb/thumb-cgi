@@ -1,0 +1,148 @@
+#!/bin/sh
+# ============================================================
+# thumb-cgi - NX 相机相册缩略图 CGI(busybox httpd)
+#
+# 两条取图路径：
+#   1) 直切：NX500 原片里本来就存着 320x216 缩略图(EXIF IFD1)和
+#      1616x1080 大图(MPF 附加)，nxthumb.arm 只把这些字节读出来，
+#      不解码。零 CPU、零内存分配、无锁、无缓存。
+#   2) 回退：没有内嵌图时(PNG、外机照片、损坏文件)仍用 ImageMagick
+#      生成并缓存，保留原有的限并发、限内存、限时护栏。
+#
+# 访问:
+#   GET /cgi-bin/thumb?f=<DCIM相对路径>&w=<宽>&q=<质量>
+#   例: /cgi-bin/thumb?f=100PHOTO/IMG_0001.JPG&w=320&q=75
+#
+# MPF 灯箱大图默认开启。机上 Wi-Fi 实测（13.9 MB 原片）：
+#   转码冷启 7452ms（干净页缓存下 20030ms）｜命中缓存 399ms｜MPF 直切 697ms
+# 多传约 560 KB，换来省掉每张新照片一次 7.5-20 秒的等待；缓存只在预热过的
+# 图上更快，而预热一张灯箱本身就要那么久。退回转码：touch /tmp/nx/thumb/mpf-off
+#
+# 缓存(仅回退路径):
+#   SD 卡 .thumbcache/<宽>x<质量>/<原路径>.jpg
+#   源文件 mtime 更新后自动重建。
+#
+# 部署(相机端,需 NX-KS root):
+#   用 thumb-install.sh 安装到 nx-rc/capdtm/www/cgi-bin/thumb,
+#   确保 capdtm-httpd.sh 已启动(8080 端口 busybox httpd)。
+# ============================================================
+
+THUMB_DIR=/opt/usr/nx-ks/nx-rc/thumb
+NXTHUMB=$THUMB_DIR/nxthumb.arm
+
+# ---- URL 解码(%XX -> 字节;busybox httpd 可能已解码,无 % 则原样) ----
+urldecode() {
+    case "$1" in
+        *%*) printf '%b' "$(printf '%s' "$1" | sed 's/%/\\x/g')" ;;
+        *)   printf '%s' "$1" ;;
+    esac
+}
+
+# ---- 参数解析 ----
+QS=${QUERY_STRING:-}
+F=""
+W=400
+Q=82
+IFS='&'
+for pair in $QS; do
+    [ -z "$pair" ] && continue
+    key=${pair%%=*}
+    val=${pair#*=}
+    case "$key" in
+        f) F=$(urldecode "$val") ;;
+        w) W=$val ;;
+        q) Q=$val ;;
+    esac
+done
+unset IFS
+
+fail() {
+    echo "Content-Type: text/plain; charset=utf-8"
+    echo "Cache-Control: no-store"
+    echo ""
+    echo "thumb error: $1"
+    exit 0
+}
+
+# ---- 前置检查 ----
+[ -r "$THUMB_DIR/thumb-cache.sh" ] || fail "thumbnail library not found"
+. "$THUMB_DIR/thumb-cache.sh"
+thumb_find_sd || fail "SD card not found"
+thumb_dimensions "$W" "$Q"
+[ -n "$F" ] && [ "$F" != "/" ] || fail "missing f parameter"
+
+# ---- 路径安全:仅允许 DCIM 下的相对路径 ----
+F=$(printf '%s' "$F" | sed 's#^/*##; s#/*$##')
+case "$F" in
+    *".."*|*"//"*|*"\\"*) fail "invalid path" ;;
+esac
+# 容忍前端传 DCIM/ 前缀
+case "$F" in
+    DCIM/*) F=${F#DCIM/} ;;
+esac
+[ -n "$F" ] || fail "invalid path"
+
+# 扩展名白名单(仅图片)
+EXT=$(printf '%s' "$F" | sed 's/.*\.//' | tr 'A-Z' 'a-z')
+case "$EXT" in
+    jpg|jpeg|png|gif|bmp|tif|tiff) ;;
+    *) fail "unsupported type: .$EXT" ;;
+esac
+
+thumb_paths "$F" "$W" "$Q"
+[ -f "$SRC" ] || fail "source not found"
+
+# ---- 路径一:直切内嵌图 ----
+# 只对 JPEG 有意义。nxthumb 自己校验 SOI/SOF/EOI 边界，任何不符都退回
+# 下面的转码路径，不会把半个文件发出去。
+if [ -x "$NXTHUMB" ]; then
+    case "$EXT" in
+        jpg|jpeg)
+            META=$("$NXTHUMB" info "$SRC" 2>/dev/null) || META=
+            if [ -n "$META" ]; then
+                TLEN=${META%% *}
+                REST=${META#* }
+                ORIENT=${REST%% *}
+                REST=${REST#* }
+                BLEN=${REST%% *}
+                case "$ORIENT" in ''|*[!0-9]*) ORIENT=1 ;; esac
+                case "$TLEN" in ''|*[!0-9]*) TLEN=0 ;; esac
+                case "$BLEN" in ''|*[!0-9]*) BLEN=0 ;; esac
+                # 竖拍时 nxthumb 多写 36 字节 APP1；orientation=1 原样输出。
+                EXTRA=0
+                [ "$ORIENT" -le 1 ] || EXTRA=36
+
+                SLICE=""
+                SLICE_LEN=0
+                if [ "$W" -le 340 ] && [ "$TLEN" -gt 0 ]; then
+                    SLICE=thumb
+                    SLICE_LEN=$((TLEN + EXTRA))
+                elif [ "$W" -le 1700 ] && [ "$BLEN" -gt 0 ] && thumb_mpf_enabled; then
+                    SLICE=big
+                    SLICE_LEN=$((BLEN + EXTRA))
+                fi
+
+                if [ -n "$SLICE" ]; then
+                    echo "Content-Type: image/jpeg"
+                    echo "Content-Length: $SLICE_LEN"
+                    # 浏览器缓存 1 小时:足以挡住同一会话内的重复请求,
+                    # 又不会在照片被删后重传同名文件时长期显示旧缩略图。
+                    echo "Cache-Control: public, max-age=3600"
+                    echo ""
+                    exec "$NXTHUMB" "$SLICE" "$SRC"
+                fi
+            fi
+            ;;
+    esac
+fi
+
+# ---- 路径二:生成并缓存(保留限并发/限内存/限时护栏) ----
+thumb_generate "$W" "$Q" || fail "thumbnail generation failed"
+
+# ---- 输出 ----
+echo "Content-Type: image/jpeg"
+echo "Cache-Control: public, max-age=3600"
+echo ""
+cat "$CACHE"
+
+exit 0

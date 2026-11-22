@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "tables": {
+    "500tclean.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "9f75b0e13ae0e9afdd4a40cd29b0e9bcb9bffc2f3b1293df64f8abe0720853a4"
+    },
+    "film_3513.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "47699355b4c627f184395c4da070bd776819e5493c8668d5fcabacd667521c3a"
+    },
+    "fuji3513_cold.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "eda00c74340e762343a69ccd7f496680c970f3d08d0a8fd89b1068572659e81f"
+    },
+    "vlog_to_kd400s.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "72527312125ca4818d889b04a945841a67a73f95d4c8e6cecb21f02b297f7738"
+    },
+    "gr3_65.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "225163d37f1af4a11287973d5c403593868f800ad09c00939e099f315b7a6bbc"
+    },
+    "vlog_g200nfxl_66.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "53414b5d25ce629b1fbb2293276d616c6a4b911c6c88e86045df7e466e760fdd"
+    },
+    "vlog_g200fxn_65.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "57545ec488671ae6cbedd79dd2d200276a5975e87c6be5b464d91cbd594d2c57"
+    },
+    "vlog_g200fxn.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "e2e7b59f3b007a64005b1a6b52081169f5e7cb659eeb820f2759beecbcfdbe0b"
+    },
+    "vlog_to_kodak_gold_200n_65.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "a8d176dbea7f96feb5f28b6fb085bfa4da1f69df214a86c95bac029d96ff77dd"
+    },
+    "vlog_g200n.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "7ba17f12e449dcbbee4e6faf9f4adf6840b69a5c7bc6d0d913cded5b09e71677"
+    }
+  }
+}

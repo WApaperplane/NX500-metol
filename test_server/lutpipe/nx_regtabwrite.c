@@ -1,0 +1,563 @@
+/* nx_regtabwrite.c — controlled single-word write to the View4 registry entry.
+ *
+ * Answers three questions in one experiment:
+ *   1. is the registry page writable through /dev/mem (O_RDWR + PROT_WRITE)?
+ *   2. does P7 re-read the registry entry on its next normal load?
+ *   3. does retargeting it actually change the hardware Load source?
+ *
+ * Only View4[3] (absolute 0x803837FC, the skin entry that the 900-sample
+ * capture showed as the live Load source) is ever modified, and every mode
+ * refuses to write unless the current word equals the expected value.
+ * The whole 16 KiB window is snapshotted first and re-verified afterwards, so
+ * any collateral byte change fails the run.
+ *
+ * Modes:
+ *   status  read-only: registry words + the five EP 3DLUT registers
+ *   probe   write the current value back (no-op) and verify it stayed
+ *   patch   View4[3]: -> <slot>, default A18 (0x81119F00)
+ *   patch12 View4[3]: -> 0x810FD100 (A12 standard: 70% of bytes differ,
+ *           max delta 97 -- this is the one that should be visible)
+ *   restore View4[3]: -> 0x81115200 (A17)
+ *
+ * <slot> is optional and must be one of A17/A18/A19. A19 (0x8111EC00) was
+ * added for the two-slot rotation: alternating the target on every switch
+ * makes the registry word change every time, so P7 cannot mistake a content
+ * swap for "same source as before", and the slot being written is never the
+ * one the registry currently points at.
+ *
+ * No ioctl, no private d5 device, no firmware change, no persistence:
+ * a power cycle restores the image copy of this page.
+ * Build: ARM EABI, -nostdlib -static -O0 -marm -mfloat-abi=soft.
+ */
+#include <asm/unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+
+#define TAB_ADDR    0x80380000u
+#define TAB_SIZE    0x4000u
+#define VIEW_AT     0x37F0u
+#define VIEW0_OFF   0x37F0u   /* View4[0] -- AdobeRGB + screen colour on (A12) */
+#define VIEW1_OFF   0x37F4u   /* View4[1] -- sRGB + screen colour on (A13) */
+#define VIEW2_OFF   0x37F8u   /* View4[2] -- AdobeRGB + screen colour off (A14) */
+#define VIEW3_OFF   0x37FCu   /* View4[3] -- sRGB + screen colour off (A17) */
+#define STILL_AT    0x2C5Cu
+#define STILL_N     6u
+#define STILL_BAK   "/mnt/mmc/nxwa_regtab_20261018/still6_orig.bin"
+/* Still (JPEG) has TWO mutually exclusive registry branches in 0x80382B30:
+ *   +0x21 (the "screen colour / OLED" bit) == 1 -> BV12  (this table, 12 entries)
+ *   otherwise                                   -> Still6 (6 entries, above)
+ * Retargeting only Still6 leaves Still on the factory table whenever OLED is
+ * on, which shows up as "viewfinder filtered, photo not filtered". */
+#define BV_AT       0x2B00u
+#define BV_N        12u
+#define BV_BAK      "/mnt/mmc/nxwa_regtab_20261018/bv12_orig.bin"
+#define REG_ADDR    0x2082B000u
+#define REG_SIZE    0x1000u
+#define VAL_A17     0x81115200u
+#define VAL_A18     0x81119F00u
+#define VAL_A19     0x8111EC00u
+#define VAL_A12     0x810FD100u
+#define VAL_A13     0x81101E00u
+#define VAL_A14     0x81106B00u
+
+static unsigned char snap[TAB_SIZE];
+
+static int sc3(int n, int a, int b, int c)
+{
+    register int r0 __asm__("r0") = a;
+    register int r1 __asm__("r1") = b;
+    register int r2 __asm__("r2") = c;
+    register int r7 __asm__("r7") = n;
+    __asm__ volatile("svc 0" : "+r"(r0) : "r"(r1), "r"(r2), "r"(r7) : "memory", "cc");
+    return r0;
+}
+
+static int sc6(int n, int a, int b, int c, int d, int e, int f)
+{
+    register int r0 __asm__("r0") = a;
+    register int r1 __asm__("r1") = b;
+    register int r2 __asm__("r2") = c;
+    register int r3 __asm__("r3") = d;
+    register int r4 __asm__("r4") = e;
+    register int r5 __asm__("r5") = f;
+    register int r7 __asm__("r7") = n;
+    __asm__ volatile("svc 0" : "+r"(r0) : "r"(r1), "r"(r2), "r"(r3), "r"(r4),
+                     "r"(r5), "r"(r7) : "memory", "cc");
+    return r0;
+}
+
+static int write_all(int fd, const void *buffer, unsigned size)
+{
+    const char *p = (const char *)buffer;
+    while (size) {
+        int n = sc3(__NR_write, fd, (int)p, (int)size);
+        if (n == -4) continue;
+        if (n <= 0) return -1;
+        p += n;
+        size -= (unsigned)n;
+    }
+    return 0;
+}
+
+static unsigned length(const char *s) { unsigned n = 0; while (s[n]) ++n; return n; }
+static void say(const char *s) { write_all(1, s, length(s)); }
+static int equal(const char *a, const char *b)
+{ while (*a && *a == *b) { ++a; ++b; } return *a == *b; }
+
+static char *hex(char *p, unsigned int value)
+{
+    static const char digits[] = "0123456789abcdef";
+    int shift;
+    *p++ = '0'; *p++ = 'x';
+    for (shift = 28; shift >= 0; shift -= 4) *p++ = digits[(value >> shift) & 15];
+    return p;
+}
+
+static void line_registry(const char *label, const volatile unsigned int *words, unsigned count)
+{
+    char out[256], *p = out;
+    const char *s;
+    unsigned i;
+    for (s = label; *s; ++s) *p++ = *s;
+    *p++ = ':';
+    for (i = 0; i < count; ++i) { *p++ = ' '; p = hex(p, words[i]); }
+    *p++ = '\n';
+    write_all(1, out, (unsigned)(p - out));
+}
+
+/* DSB via coprocessor encoding: assembles under the arm5te default, takes
+ * effect on the Cortex-A9 target. Needed so the store reaches the device
+ * before the readback below. */
+static void barrier(void)
+{ __asm__ volatile("mcr p15, 0, %0, c7, c10, 4" :: "r"(0) : "memory"); }
+
+static int read_file(const char *path, unsigned char *dst, unsigned want)
+{
+    int fd = sc3(__NR_open, (int)path, O_RDONLY, 0);
+    unsigned done = 0;
+    if (fd < 0) { say("FAIL open backup for read\n"); return -1; }
+    while (done < want) {
+        int n = sc3(__NR_read, fd, (int)(dst + done), (int)(want - done));
+        if (n == -4) continue;
+        if (n <= 0) { sc3(__NR_close, fd, 0, 0); say("FAIL short backup\n"); return -1; }
+        done += (unsigned)n;
+    }
+    sc3(__NR_close, fd, 0, 0);
+    return 0;
+}
+
+static int save_file(const char *path, const unsigned char *src, unsigned n)
+{
+    int fd = sc3(__NR_open, (int)path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int rc;
+    if (fd < 0) { say("FAIL create backup\n"); return -1; }
+    rc = write_all(fd, src, n);
+    sc3(__NR_close, fd, 0, 0);
+    return rc;
+}
+
+/* Only these slot addresses may ever appear in the View4 entries under our hand. */
+static int known_slot(unsigned int v)
+{ return v == VAL_A17 || v == VAL_A18 || v == VAL_A19 || v == VAL_A12 || v == VAL_A13; }
+
+/* Count bytes changed outside the target region (must stay zero), and
+ * report how many bytes inside it actually differ. A word rewrite can change
+ * as few as one byte (0x81115200 -> 0x81119F00 differs only at 0x52). */
+static unsigned window_delta(const volatile unsigned char *live,
+                             unsigned off, unsigned len, unsigned *inside)
+{
+    unsigned i, stray = 0;
+    *inside = 0;
+    for (i = 0; i < TAB_SIZE; ++i) {
+        if (live[i] == snap[i]) continue;
+        if (i >= off && i < off + len) ++(*inside);
+        else ++stray;
+    }
+    return stray;
+}
+
+static void putu(const char *label, unsigned v)
+{
+    char b[96], *p = b;   /* labels here run to ~42 chars; keep ample slack */
+    unsigned d[10], k = 0, j;
+    const char *s;
+    for (s = label; *s; ++s) *p++ = *s;
+    if (!v) d[k++] = 0;
+    while (v) { d[k++] = v % 10u; v /= 10u; }
+    for (j = k; j > 0; --j) *p++ = (char)('0' + d[j - 1]);
+    *p++ = '\n';
+    write_all(1, b, (unsigned)(p - b));
+}
+
+static int map(void **addr, unsigned pa, unsigned size, int writable, int *fd)
+{
+    int flags = writable ? (O_RDWR | O_SYNC) : (O_RDONLY | O_SYNC);
+    int prot = writable ? (PROT_READ | PROT_WRITE) : PROT_READ;
+    unsigned got;
+    *fd = sc3(__NR_open, (int)"/dev/mem", flags, 0);
+    if (*fd < 0) { say("FAIL open /dev/mem\n"); return -1; }
+    got = (unsigned)sc6(__NR_mmap2, 0, (int)size, prot, MAP_SHARED, *fd, (int)(pa >> 12));
+    if (got >= 0xFFFFF000u) {
+        say("FAIL mmap (writable=");
+        say(writable ? "yes" : "no");
+        say(")\n");
+        sc3(__NR_close, *fd, 0, 0);
+        return -1;
+    }
+    *addr = (void *)got;
+    return 0;
+}
+
+/* Read the five EP 3DLUT registers once, for an objective Load-source check. */
+static void show_registers(void)
+{
+    void *base = 0; int fd = 0;
+    if (map(&base, REG_ADDR, REG_SIZE, 0, &fd) < 0) { say("REGS: unavailable\n"); return; }
+    {
+        volatile unsigned int *r = (volatile unsigned int *)base;
+        char out[160], *p = out;
+        *p++ = 'R'; *p++ = 'E'; *p++ = 'G'; *p++ = 'S'; *p++ = ':';
+        *p++ = ' ';
+        p = hex(p, r[0]); *p++ = ' ';
+        p = hex(p, r[1]); *p++ = ' ';
+        p = hex(p, r[2]); *p++ = ' ';
+        p = hex(p, r[3]); *p++ = ' ';
+        p = hex(p, r[4]); *p++ = '\n';
+        write_all(1, out, (unsigned)(p - out));
+        say("REGS: onoff cfg pulse load_addr save_addr\n");
+    }
+    sc3(__NR_munmap, (int)base, (int)REG_SIZE, 0);
+    sc3(__NR_close, fd, 0, 0);
+}
+
+static int do_write(const char *mode, unsigned int slot)
+{
+    void *base = 0;
+    int fd = 0, rc = 1;
+    volatile unsigned int *tab;
+    volatile unsigned char *live;
+    unsigned int expect, target, before, after;
+    unsigned off = VIEW3_OFF;
+    unsigned i;
+
+    if (equal(mode, "probe"))        { expect = 0xFFFFFFFFu; target = 0xFFFFFFFFu; }
+    else if (equal(mode, "patch"))   { expect = 0xFFFFFFFFu; target = slot; }
+    else if (equal(mode, "patch1"))  { expect = 0xFFFFFFFFu; target = slot; off = VIEW1_OFF; }
+    else if (equal(mode, "patch12")) { expect = 0xFFFFFFFFu; target = VAL_A12; }
+    else if (equal(mode, "restore")) { expect = 0xFFFFFFFFu; target = VAL_A17; }
+    else { say("unknown mode\n"); return 1; }
+
+    if (map(&base, TAB_ADDR, TAB_SIZE, 1, &fd) < 0) return 1;
+    tab = (volatile unsigned int *)base;
+    live = (volatile unsigned char *)base;
+
+    for (i = 0; i < TAB_SIZE; ++i) snap[i] = live[i];
+    before = tab[off >> 2];
+    line_registry("VIEW4 before", tab + (VIEW_AT >> 2), 4);
+    say("MODE "); say(mode); say(" writable-mapping ok\n");
+
+    if (!known_slot(before)) {
+        say("REFUSE: View4[3] holds an unknown slot, no write performed\n");
+        goto out;
+    }
+    if (expect != 0xFFFFFFFFu && before != expect) {
+        say("REFUSE: View4[3] is not the expected value, no write performed\n");
+        goto out;
+    }
+    if (equal(mode, "probe")) target = before;
+    if (!equal(mode, "probe") && before == target) {
+        say("NOTE: already at target, nothing to write\n");
+        rc = 0;
+        goto out;
+    }
+
+    say("WRITE "); { char b[16], *p = b; p = hex(p, target); *p++ = '\n'; write_all(1, b, (unsigned)(p - b)); }
+    tab[off >> 2] = target;
+    barrier();
+
+    after = tab[off >> 2];
+    line_registry("VIEW4 after ", tab + (VIEW_AT >> 2), 4);
+    say("READBACK "); { char b[16], *p = b; p = hex(p, after); *p++ = '\n'; write_all(1, b, (unsigned)(p - b)); }
+
+    if (after != target) { say("FAIL readback does not match written value\n"); goto out; }
+
+    /* Only the target word may differ; everything else must be untouched. */
+    {
+        unsigned in_word = 0;
+        unsigned stray = window_delta(live, off, 4, &in_word);
+        putu("WINDOW bytes changed inside target word = ", in_word);
+        putu("WINDOW stray deltas outside target word = ", stray);
+        if (stray != 0) { say("FAIL collateral change in window\n"); goto out; }
+        if (equal(mode, "probe") ? in_word != 0 : in_word == 0) {
+            say("FAIL unexpected delta pattern\n");
+            goto out;
+        }
+    }
+    rc = 0;
+
+out:
+    sc3(__NR_munmap, (int)base, (int)TAB_SIZE, 0);
+    sc3(__NR_close, fd, 0, 0);
+    return rc;
+}
+
+/* View4 is one four-entry table for all output profiles: P7 picks the entry
+ * from the OrderSheet value (colour space + screen colour), so covering only
+ * [1]/[3] leaves AdobeRGB looking at the factory table.
+ *   [0] A12  AdobeRGB + screen colour on      [1] A13  sRGB + on
+ *   [2] A14  AdobeRGB + screen colour off     [3] A17  sRGB + off
+ * This writes or restores all four in one mapping, with the same "only the
+ * target region may change" check as the single-word path. Restoring writes
+ * the factory words unconditionally, so it is idempotent. */
+static const unsigned int view_factory[4] = { VAL_A12, VAL_A13, VAL_A14, VAL_A17 };
+
+static int do_view_all(const char *action, unsigned int slot)
+{
+    void *base = 0;
+    int fd = 0, rc = 1;
+    volatile unsigned int *tab;
+    volatile unsigned char *live;
+    unsigned int vals[4];
+    unsigned i, inside = 0, stray;
+    int readonly = equal(action, "status");
+
+    if (map(&base, TAB_ADDR, TAB_SIZE, readonly ? 0 : 1, &fd) < 0) return 1;
+    tab = (volatile unsigned int *)base;
+    live = (volatile unsigned char *)base;
+    for (i = 0; i < TAB_SIZE; ++i) snap[i] = live[i];
+    line_registry("VIEW4 before", tab + (VIEW0_OFF >> 2), 4);
+    if (readonly) { rc = 0; goto out; }
+
+    for (i = 0; i < 4; ++i) {
+        vals[i] = equal(action, "set") ? slot : view_factory[i];
+        tab[(VIEW0_OFF >> 2) + i] = vals[i];
+    }
+    barrier();
+    line_registry("VIEW4 after ", tab + (VIEW0_OFF >> 2), 4);
+
+    for (i = 0; i < 4; ++i) {
+        if (tab[(VIEW0_OFF >> 2) + i] != vals[i]) { say("FAIL readback mismatch\n"); goto out; }
+    }
+    say("READBACK ok\n");
+
+    stray = window_delta(live, VIEW0_OFF, 16, &inside);
+    putu("VIEW4 bytes changed = ", inside);
+    putu("stray deltas outside View4 = ", stray);
+    if (stray != 0) { say("FAIL collateral change in window\n"); goto out; }
+    rc = 0;
+
+out:
+    sc3(__NR_munmap, (int)base, (int)TAB_SIZE, 0);
+    sc3(__NR_close, fd, 0, 0);
+    return rc;
+}
+
+/* A registry table is a run of u32 slot addresses. TWO of them feed Still:
+ * Still6 (6 entries) and BV12 (12 entries), selected in 0x80382B30 by the
+ * +0x21 "screen colour" bit. Pointing every entry of a table at one slot
+ * makes any branch of that table read the same content, so one capture
+ * answers "does Still consume it" without guessing which index is live.
+ * The original words are backed up before the first write. */
+static void cat(char *dst, const char *a, const char *b)
+{ while (*a) *dst++ = *a++; while (*b) *dst++ = *b++; *dst = 0; }
+
+static int do_table(const char *action, unsigned off, unsigned n,
+                    const char *bak, const char *name, unsigned int slot)
+{
+    void *base = 0;
+    int fd = 0, rc = 1;
+    volatile unsigned int *tab;
+    volatile unsigned char *live;
+    unsigned int vals[BV_N], before[BV_N];
+    unsigned i, inside = 0, stray;
+    int writing = equal(action, "set") || equal(action, "write");
+    int backup = equal(action, "set");
+    int readonly = equal(action, "status");
+    char lab[48];
+
+    if (map(&base, TAB_ADDR, TAB_SIZE, readonly ? 0 : 1, &fd) < 0) return 1;
+    tab = (volatile unsigned int *)base;
+    live = (volatile unsigned char *)base;
+    for (i = 0; i < TAB_SIZE; ++i) snap[i] = live[i];
+    for (i = 0; i < n; ++i) before[i] = tab[(off >> 2) + i];
+
+    cat(lab, name, " before"); line_registry(lab, tab + (off >> 2), n);
+    if (readonly) { rc = 0; goto out; }
+
+    if (writing) {
+        if (backup) {
+            if (save_file(bak, (const unsigned char *)before, n * 4) < 0) goto out;
+            say("BACKUP written\n");
+        }
+        for (i = 0; i < n; ++i) tab[(off >> 2) + i] = slot;
+        for (i = 0; i < n; ++i) vals[i] = slot;
+    } else {
+        if (read_file(bak, (unsigned char *)vals, n * 4) < 0) goto out;
+        for (i = 0; i < n; ++i) tab[(off >> 2) + i] = vals[i];
+    }
+    barrier();
+    cat(lab, name, " after "); line_registry(lab, tab + (off >> 2), n);
+
+    for (i = 0; i < n; ++i) {
+        if (tab[(off >> 2) + i] != vals[i]) { say("FAIL readback mismatch\n"); goto out; }
+    }
+    say("READBACK ok\n");
+
+    stray = window_delta(live, off, n * 4, &inside);
+    cat(lab, name, " bytes changed = "); putu(lab, inside);
+    putu("stray deltas outside table = ", stray);
+    if (stray != 0) { say("FAIL collateral change in window\n"); goto out; }
+    rc = 0;
+
+out:
+    sc3(__NR_munmap, (int)base, (int)TAB_SIZE, 0);
+    sc3(__NR_close, fd, 0, 0);
+    return rc;
+}
+
+static int do_still(const char *action, unsigned int slot)
+{ return do_table(action, STILL_AT, STILL_N, STILL_BAK, "STILL6", slot); }
+
+static int do_bv(const char *action, unsigned int slot)
+{ return do_table(action, BV_AT, BV_N, BV_BAK, "BV12", slot); }
+
+/* "still-set" / "bv-restore" ... -> action after the dash, plus which table. */
+static int prefix(const char *s, const char *p)
+{ while (*p) { if (*s++ != *p++) return 0; } return 1; }
+
+static int table_mode(const char *cmd, unsigned int slot)
+{
+    const char *p = cmd;
+    while (*p && *p != '-') ++p;
+    if (*p != '-') { say("unknown mode\n"); return 1; }
+    if (prefix(cmd, "still-")) return do_still(p + 1, slot);
+    if (prefix(cmd, "bv-"))    return do_bv(p + 1, slot);
+    say("unknown mode\n");
+    return 1;
+}
+
+/* Force one hardware reload from <addr>, using the same store order P7 emits
+ * in 0x804A5C44 (trace: OnOff, Pulse clear, Pulse bit0, Load source, Cfg,
+ * Pulse|bit8, Pulse clear). Cfg is preserved verbatim so the current bank and
+ * format stay as they are. This is what lets a table change take effect
+ * without waiting for the operator to half-press the shutter. */
+static int do_reload(unsigned int addr)
+{
+    void *base = 0;
+    int fd = 0, rc = 1;
+    volatile unsigned int *r;
+    unsigned int cfg, got, cfg_after;
+
+    if (map(&base, REG_ADDR, REG_SIZE, 1, &fd) < 0) return 1;
+    r = (volatile unsigned int *)base;
+    cfg = r[1];
+    say("RELOAD ");
+    putu("ADDR requested = ", addr);
+    putu("CFG before = ", cfg);
+
+    r[0] = 1u; barrier();          /* OnOff */
+    r[2] = 0u; barrier();          /* Pulse clear */
+    r[2] = 1u; barrier();          /* bit0 */
+    r[3] = addr; barrier();        /* Load source */
+    r[1] = cfg; barrier();         /* Cfg unchanged */
+    r[2] = 0x101u; barrier();      /* bit8 trigger */
+    r[2] = 1u; barrier();
+
+    got = r[3];
+    cfg_after = r[1];
+    putu("LOAD ADDR after = ", got);
+    putu("CFG after = ", cfg_after);
+    if (got != addr) { say("FAIL load address did not stick\n"); goto out; }
+    if (cfg_after != cfg) { say("FAIL cfg changed during reload\n"); goto out; }
+    say("RELOAD ok\n");
+    rc = 0;
+out:
+    sc3(__NR_munmap, (int)base, (int)REG_SIZE, 0);
+    sc3(__NR_close, fd, 0, 0);
+    return rc;
+}
+
+static unsigned int parse_hex(const char *s)
+{
+    unsigned v = 0;
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+    while (*s) {
+        char c = *s++;
+        unsigned d;
+        if (c >= '0' && c <= '9') d = (unsigned)(c - '0');
+        else if (c >= 'a' && c <= 'f') d = (unsigned)(c - 'a') + 10u;
+        else if (c >= 'A' && c <= 'F') d = (unsigned)(c - 'A') + 10u;
+        else break;
+        v = (v << 4) | d;
+    }
+    return v;
+}
+
+int nx_main(unsigned *initial_stack)
+{
+    unsigned argc = initial_stack[0];
+    char **argv = (char **)(initial_stack + 1);
+    unsigned int slot = VAL_A18;   /* A18 unless the caller names A17/A19 */
+
+    say("=== regtabwrite (registry entries, two Still tables) ===\n");
+    if (argc < 2) {
+        say("usage: nx_regtabwrite.arm status|probe|patch|patch1|patch12|restore\n");
+        say("       patch  -> View4[3] (0x803837FC)\n");
+        say("       patch1 -> View4[1] (0x803837F4), the entry P7 loads today\n");
+        say("       still-status|still-set|still-write|still-restore <hexslot>\n");
+        say("       bv-status|bv-set|bv-write|bv-restore <hexslot>\n");
+        say("       view-set|view-restore|view-status [hexslot]  (all four View4)\n");
+        say("       still-* = Still6 (6 entries), bv-* = BV12 (12 entries)\n");
+        return 1;
+    }
+    if (argc >= 3) {
+        slot = parse_hex(argv[2]);
+        if (!known_slot(slot)) {
+            say("REFUSE: target slot is not A17/A18/A19\n");
+            return 1;
+        }
+    }
+    if (equal(argv[1], "status")) {
+        void *base = 0; int fd = 0;
+        if (map(&base, TAB_ADDR, TAB_SIZE, 0, &fd) < 0) return 1;
+        line_registry("VIEW4 ", (volatile unsigned int *)base + (VIEW_AT >> 2), 4);
+        line_registry("STILL6", (volatile unsigned int *)base + (STILL_AT >> 2), STILL_N);
+        line_registry("BV12  ", (volatile unsigned int *)base + (BV_AT >> 2), BV_N);
+        sc3(__NR_munmap, (int)base, (int)TAB_SIZE, 0);
+        sc3(__NR_close, fd, 0, 0);
+        show_registers();
+        say("=== done ===\n");
+        return 0;
+    }
+    if (equal(argv[1], "reload")) {
+        int rc;
+        if (argc < 3) { say("usage: nx_regtabwrite.arm reload <hexaddr>\n"); return 1; }
+        rc = do_reload(parse_hex(argv[2]));
+        show_registers();
+        say(rc == 0 ? "=== done ===\n" : "=== FAILED ===\n");
+        return rc;
+    }
+    if (prefix(argv[1], "view-")) {
+        int rc = do_view_all(argv[1] + 5, slot);
+        say(rc == 0 ? "=== done ===\n" : "=== FAILED ===\n");
+        return rc;
+    }
+    if (prefix(argv[1], "still-") || prefix(argv[1], "bv-")) {
+        int rc = table_mode(argv[1], slot);
+        say(rc == 0 ? "=== done ===\n" : "=== FAILED ===\n");
+        return rc;
+    }
+    {
+        int rc = do_write(argv[1], slot);
+        show_registers();
+        say(rc == 0 ? "=== done ===\n" : "=== FAILED ===\n");
+        return rc;
+    }
+}
+
+__asm__(".global _start\n"
+        "_start:\n"
+        "mov r0, sp\n"
+        "bl nx_main\n"
+        "mov r7, #1\n"
+        "svc 0\n");

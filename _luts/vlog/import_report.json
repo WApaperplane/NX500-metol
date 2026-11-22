@@ -1,0 +1,23 @@
+[
+ {
+  "name": "vlog_g200n",
+  "source": "/mnt/f/BaiduNetdiskDownload/lut/ejay 柯达金200胶片模拟 ¥15/旧版本/3月1日版本kodak gold200n/基于vlog（视频及监视用此）/机内/vlog g200n.cube",
+  "cube_size": 33,
+  "metrics": {
+   "warmth": 4.700647796841633,
+   "saturation": 32.578955446103805,
+   "contrast": 2.1586801726824305,
+   "shadow_tint": -8.421370695167035,
+   "high_tint": -10.908257946270306,
+   "shadow_a": 1.5803540942712357,
+   "high_a": 0.18504285233383877,
+   "shadow_L": 7.152019315697384,
+   "high_L": 96.30984243312206,
+   "black_lift": 7.152019315697384,
+   "white_level": 97.30030048477184
+  },
+  "nearest": "kodak_2383",
+  "dE00": 9.096,
+  "distinct": true
+ }
+]

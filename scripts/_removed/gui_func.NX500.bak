@@ -1,0 +1,17 @@
+checkbox|远程保存|rem.sh
+button|视频码率|@/tmp/gui_br.NX500
+
+button|变焦缩放|zoomzoom.sh
+button|分辨率修改|@/opt/usr/nx-ks/gui_res.NX500
+
+button|批量录制|brec.sh
+button|HDR|1HDR.sh
+button|LUT 滤镜|filter:lut
+button|V-Log 曲线|@/opt/usr/nx-ks/gui_vlog.NX500
+button|TC 曲线|@/opt/usr/nx-ks/gui_tc.NX500
+
+button| Metol 版本 |ver.sh
+checkbox|摄像模式|camcorder_mode.sh
+
+button|返回|@/opt/usr/nx-ks/gui_ini.NX500
+button|取消|/opt/usr/nx-ks/gui_exit.sh

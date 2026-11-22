@@ -1,0 +1,26 @@
+#=====================================================================
+# gui_evwifi.NX500 — the single filter entry, nxui menu (EN)
+#=====================================================================
+# EV+WiFi opens this page. EV+AEL is free again (community script).
+#
+# Both filter layers live in ONE panel: LUT and FilmLab are tabs at the top
+# of the same window, switchable at any time. One key combo instead of three.
+#
+# Switching layers happens in-process (`filter:lut` / `filter:pw` are
+# pseudo-commands nxui understands). The old `nxui.sh switch <mode>` killed
+# the panel and started another one: a one-second black screen, and
+# `pidof nxui.arm` matched the exiting process itself, which made the panel
+# die and never come back. Now it only swaps the list — same process, same
+# window, same focus.
+#
+# Format: button|label|command   /  @ prefix = open submenu (same renderer)
+# Keep labels within 6 full-width chars. 6 entries = one nxui menu page.
+#=====================================================================
+
+button|LUT Filter|filter:lut
+button|FilmLab|filter:pw
+button|V-Log Curve|@/opt/usr/nx-ks/gui_vlog.NX500
+
+button|Functions|@/opt/usr/nx-ks/gui_func.NX500
+button|GO BACK|@/opt/usr/nx-ks/gui_ini.NX500
+button|CANCEL|/opt/usr/nx-ks/gui_exit.sh

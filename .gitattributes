@@ -1,0 +1,18 @@
+# 相机端脚本与前端资源必须 LF（Tizen/DRIMe5 的 sh 不兼容 CRLF）
+* text=auto eol=lf
+*.docx binary
+*.zip binary
+*.JPG binary
+*.jpg binary
+*.png binary
+*.mo binary
+*.bin binary
+*.arm binary
+
+# Preserve the exact captured bytes covered by the LUT evidence manifests.
+raw8/gates/lut/memory_audit_2026-10-17/** -text -whitespace
+raw8/gates/lut/ondevice_selection_2026-10-17/** -text -whitespace
+raw8/gates/lut/verifier_offline_2026-10-17/** -text -whitespace
+
+# 65^3 文本 LUT：禁止换行符转换，保持生成字节
+*.cube -text

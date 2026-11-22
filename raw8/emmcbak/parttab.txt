@@ -1,0 +1,19 @@
+# nx500 partition table
+# <vol>       <dev>       <size(M)>        <image>  <order> <compress>  <fs>  <mkfs-option>  <mount-point>
+#
+adj           /dev/mmcblk0p1     20             none   1    None        raw
+rtos          /dev/mmcblk0p7     30          rom.bin   2    None        raw
+rtos_data     /dev/mmcblk0p8     50             none   3    None        raw
+#extended     /dev/mmcblk0p4      0             none   4    None        raw
+platform      /dev/mmcblk0p10  1024       rootfs.img   5    LZO        ext4
+opt           /dev/mmcblk0p11   100          opt.img   6    LZO        ext4      -j              /opt
+pref          /dev/mmcblk0p2     10             none   7    None        raw
+pref_default  /dev/mmcblk0p3     30 pref_default.bin   8    None        raw
+pref_recovery /dev/mmcblk0p5     20             none   9    None        raw
+opt-usr       /dev/mmcblk0p14     0             none  10    None       ext4      -j              /opt/usr
+rImage        /dev/mmcblk0p13    10           rImage  11    None        raw
+pcache        /dev/mmcblk0p12     5      pcache.list  12    None        raw
+devicem4      /dev/mmcblk0boot1   4     devicem4.bin  13    None        raw
+snapshot      /dev/mmcblk0p9    100     snapshot.img  14    LZO         raw
+uImage        /dev/mmcblk0p6     10           uImage  15    None        raw
+bootloader    /dev/mmcblk0boot0   4   bootloader.bin  16    None        raw

@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "tables": {
+    "ccv2_fx_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "dbedbc91bb388fb2b02f2d6710e762ee4d1d14345490db7981ca4a2ec60cb6ab"
+    },
+    "ccv2_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "c589cdc90d738944de022811464598069e5d210ebc0c911fe73e5e0ac941c22a"
+    },
+    "ccv2_port_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "484bc9221a8689623fad86836c317da41a1bc6be64076782894ffb1cf40b6d50"
+    },
+    "cnv2_lcn_fx_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "d5af0ee6ef8b1a353d96e6ace0f6d25172281895195be8a8ba6f208f66150541"
+    },
+    "cnv2_lcn_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "313b870d6548c89513833a26edc02bda4a360c934be52931af8ff4f2cf5b140b"
+    },
+    "cnv2_lcn_port_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "3fff805b7a1f630a0c5e732ded300216f5791374b9e0581063f6d474eda69d80"
+    },
+    "cnv2_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "7ea384b8dec77f2c715dafef77b7df7942a6aed795136e9831ec0ea74a24c727"
+    },
+    "cnv2_port_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "969fe6eff2a518110394ee05443430172154907dfe0493bb2117f222aadaa0f0"
+    },
+    "nn_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "64eac2d7797bece32dfe89ba8735b63ebca60dc62026d4ea5955795bf57e593d"
+    },
+    "nn_port_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "b297fa7c0a509f196e7407a7daaab62cf5a764cf7ac1d8997b864e02dcebea92"
+    },
+    "ra_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "52112c288598f28d3c1b67dea1734c737b175812bb3336f38e89a67591ef7171"
+    },
+    "ra100_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "99fa596c2cf58cb8f4581965bdd9c6bcfadf38107db6b0d410062f8d1ade167e"
+    },
+    "silver01_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "cfb750a4211c6b1b69b063e45d31b16d347defd2a11189c556e274b1925a1360"
+    },
+    "silver02_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "2ba580eb90904affc6f1fc4a7030a38ea34f08766b3be7f3f09f7b84034c56b3"
+    },
+    "silver03_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "2aada9775f038b6d9f11bdd5ca7a20d701c76bc26f54e5d49cc499780eec5da5"
+    },
+    "silver04_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "7754f608c7a35dbc175ed1869c1f93674afa57f4014635f5f430d9b14b480b4f"
+    },
+    "movusv2_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "da93ec270d814611da748266ba12e348f35c0bcb1a315120ae5f7dd5868ae516"
+    },
+    "movusv6_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "df3dd5c0da50304522a51781fdb7309082fef804486633d0523f0c51d32a55ee"
+    },
+    "polusv2_plady.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "5ecf2817ae7c1a04736fdfb80027e227b795a3cb4502d3d6a22b942db79859f0"
+    },
+    "japan1.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "4bd687311d1dc8aa392d89199cdfea7530c5078f91a5dd8650c5bd2fd37dd8c4"
+    },
+    "btym.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "0b6ffc8ce301d40b859978a7d2d9bb8761dbfa4cb337fc74cac88948de52ebb9"
+    },
+    "kd2383n.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "9e7077dcfe06bf0263ee11fd801709fb5dec99cb82526b317b4a6a78ab65e1cf"
+    },
+    "lf_01.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "9ba72b64b3a1255d473b877172c7aaac32e9710f1ea1db787f390df932a91a86"
+    },
+    "gr2_positivefilm_booz.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "e4e70328afb3e60a7ab8adee57dd4c8dd8345051be8b0209b76e2cb3d7a86944"
+    },
+    "xjd_to_kd400s.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "032747fff11085a37481a55609719facd2c1c352d9957ff62fa7d99ef6ab78eb"
+    },
+    "xjd_g200nfxl.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "66c9b5529dcad38264717daca5edcbc34e961a939fdb097d08a4c8aecce33df6"
+    },
+    "xjd_g200nfxn.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "01aaa44b63e1546922f21cc15b0aab4fe6af6f11a5d078eaa8aca2b3a9c4df54"
+    },
+    "xjd_g200n_low.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "ed5031d1e08bef21d5df335344c84f1394b888ff80a795e2befe973be6aa8bfe"
+    },
+    "xjd_g200n.bin": {
+      "space": "CrCbY-BT601-full-v1",
+      "sha256": "a91bd5146eba0aac8625feca0a7e6f83023649010b3b2aa55e94da93e154d0b8"
+    }
+  }
+}

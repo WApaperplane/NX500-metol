@@ -1,0 +1,23 @@
+Metol（米吐尔）— Samsung NX (DRIMe5 / Tizen) enhancement & research project
+
+version        1.15.8              （双语发行：CN/EN 双包 + 双语 release 说明）
+repo           https://github.com/WApaperplane/metol
+branch         nxwa（仓库默认分支）
+upstream       https://github.com/ottokiksmaler/nx500_nx1_modding   ★ GitHub fork parent（实测）
+bloodline      NX-KS 2.88 (KinoSeed)  +  nx500_nx1_modding (上游血缘)
+camera-path    /opt/usr/nx-ks/          ★ 相机端安装路径【保持不变】
+license        AGPL-3.0（见 LICENSE；派生自 AGPL 上游 ⇒ 必须同证）
+
+命名
+  项目名 = Metol（米吐尔，银盐显影主剂）。2026-10-08 首次定名，2026-10-18 定为仓库正式名，
+  2026-11-16 起项目内所有对外命名只保留 Metol。
+  NX-WA / NXWA 是 2026-10-10 ~ 10-18 的过渡名，NX-KS2 是更早的工程代号，均已停用。
+
+版本号规则
+  1.<序号>.<补丁>     例：1.15.8 = 第 15 轮迭代的第 8 个修版
+  2026-11-16 起弃用 <NX-KS 血脉>.<序号> 形式。旧版对应关系：
+    2.88.0-nxwa.1 … 2.88.0-nxwa.15   →  1.1.0 … 1.15.0
+    2.88.0-nxwa.15.5                 →  1.15.5
+  NX-KS 2.88 仍是代码血缘（见 bloodline 与 ATTRIBUTION.md），只是不再进版本号。
+
+生成：2026-10-08（工作流总表 D8）· 2026-11-16 统一为 Metol 命名

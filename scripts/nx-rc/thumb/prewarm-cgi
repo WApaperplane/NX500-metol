@@ -1,0 +1,76 @@
+#!/bin/sh
+# ============================================================
+# prewarm-cgi - 缩略图预热进度查询/控制(8080 busybox httpd CGI)
+#
+# 前端用它显示"已缓存 N/M",让后台预热过程可见,
+# 消除"点开相册一片空白 = 是不是卡住了"的疑虑。
+#
+#   GET /cgi-bin/prewarm              -> 状态 JSON
+#   GET /cgi-bin/prewarm?action=start -> 启动预热(若未运行)
+#   GET /cgi-bin/prewarm?action=stop  -> 停止预热
+#
+# 返回:
+#   {"running":1,"w":320,"q":75,"done":87,"skipped":20,"total":149,"ts":...}
+#   running=0 表示已结束/未运行;total=0 表示还没统计出总数。
+# ============================================================
+
+PREWARM=/opt/usr/nx-ks/nx-rc/thumb/thumb-prewarm.sh
+
+echo "Content-Type: application/json"
+echo "Cache-Control: no-store"
+echo ""
+
+QS=$QUERY_STRING
+ACTION=""
+case "$QS" in
+    *action=start*) ACTION=start ;;
+    *action=stop*)  ACTION=stop ;;
+esac
+
+if [ ! -x "$PREWARM" ]; then
+    echo '{"ok":false,"error":"prewarm script missing"}'
+    exit 0
+fi
+
+case "$ACTION" in
+    start)
+        # 注意:CGI 请求结束时 busybox httpd 会清理整个进程组,直接 & 启动的
+        # 预热会被连坐杀掉(running 立刻变 0)。必须用 setsid 脱离会话。
+        #
+        # ★ busybox 不在系统 PATH 里（同仓 lut_video.sh 用 /usr/bin/setsid
+        #   绝对路径就是为此），所以 `command -v setsid` 可能恒假，原来那条
+        #   分支会静默退到 nohup；nohup 只挡 HUP、不做会话隔离，挡不住
+        #   进程组清理。改成按实际启动结果逐级降级，并把失败写进 JSON。
+        #
+        # ★ 不用 `$BB setsid true` 去探测 applet：busybox 会把 true 当
+        #   PROG 在 PATH 里找，探不出真实结果。直接看这次启动成不成功。
+        BB=/opt/usr/nx-ks/busybox
+        started=0
+        if [ -x /usr/bin/setsid ]; then
+            /usr/bin/setsid sh "$PREWARM" start >/dev/null 2>&1 && started=1
+        fi
+        if [ "$started" != 1 ] && [ -x "$BB" ]; then
+            "$BB" setsid sh "$PREWARM" start >/dev/null 2>&1 && started=1
+        fi
+        if [ "$started" != 1 ] && [ -x "$BB" ]; then
+            "$BB" nohup sh "$PREWARM" start >/dev/null 2>&1 && started=1
+        fi
+        sleep 1
+        if [ "$started" != 1 ]; then
+            echo '{"ok":false,"running":0,"done":0,"skipped":0,"total":0,"error":"cannot detach prewarm (no setsid/nohup)"}'
+            exit 0
+        fi
+        ;;
+    stop)
+        "$PREWARM" stop >/dev/null 2>&1
+        ;;
+esac
+
+# 进度 JSON 由 thumb-prewarm.sh json 输出(脚本内已处理 running 标记)
+out=$("$PREWARM" json 2>/dev/null)
+if [ -n "$out" ]; then
+    echo "$out"
+else
+    echo '{"running":0,"done":0,"skipped":0,"total":0}'
+fi
+exit 0

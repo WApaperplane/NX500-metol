@@ -1,0 +1,23 @@
+[
+ {
+  "name": "xjd_g200n",
+  "source": "/mnt/f/BaiduNetdiskDownload/lut/ejay 柯达金200胶片模拟 ¥15/旧版本/3月1日版本kodak gold200n/基于新经典（照片建议用此可以模拟胶片颗粒）/（饱和度较高）3月15日/xjd g200n.cube",
+  "cube_size": 33,
+  "metrics": {
+   "warmth": 0.7166185927532259,
+   "saturation": 19.476197242278133,
+   "contrast": 1.0883920816461543,
+   "shadow_tint": -3.608145473174268,
+   "high_tint": -2.5811461504135047,
+   "shadow_a": 0.1922031285793433,
+   "high_a": -0.5856409677583718,
+   "shadow_L": 9.3385645378109,
+   "high_L": 81.8443417921375,
+   "black_lift": 7.152019315697384,
+   "white_level": 96.91297093119455
+  },
+  "nearest": "gap_silver_retain",
+  "dE00": 7.61,
+  "distinct": true
+ }
+]

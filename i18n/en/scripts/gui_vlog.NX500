@@ -1,0 +1,23 @@
+#=====================================================================
+# gui_vlog.NX500 — V-Log curve page (EN)
+#=====================================================================
+# Every action goes through vlog.sh; the menu only forwards the verb.
+#   V-Log Switch  idempotent: no curve -> apply, has curve -> restore
+#   RESTORE       force factory gamma
+#   Curve State   print the NXL_GAMMA_RELOAD1 block
+#   Gate Check    run the seven vlog-arm.sh gates, popup shows verdict only
+#
+# Gate check and curve toggle stay separate on purpose: the gate covers
+# A18 stock / PW neutral / USB unplugged, the toggle only touches gamma.
+# Merging them would change two states per tap with no way to tell which.
+#
+# Keep labels within 6 full-width chars (mod_gui 2-column grid).
+#=====================================================================
+
+button|V-Log Switch|vlog.sh toggle
+button|RESTORE|vlog.sh off
+button|Curve State|vlog.sh status
+
+button|Gate Check|vlog.sh gate
+button|GO BACK|@/opt/usr/nx-ks/gui_evwifi.NX500
+button|CANCEL|/opt/usr/nx-ks/gui_exit.sh
