@@ -123,6 +123,8 @@ sync; sync; sync
 Then **normal power off → power on**. Re-flashing the official 1.12 package (which rewrites p7)
 also works.
 
+- **Closed-case emergency recovery (NX500 only, requires intact `boot0` and `rImage`)**: If the camera cannot boot or reach SSH, place an official, unmodified `nx500.bin` on a clean FAT32 SD root, remove the battery, insert the card, flip the screen to selfie position, reinsert the battery, hold **MOBILE (Wi-Fi) + AEL + full Shutter** while powering ON to enter Recovery Mode, then hold the shutter button to reflash (never interrupt power during flashing; NX1 unverified).
+
 ## 7. Risks & discipline
 
 - Do **not** cut power or pull the card while writing; external power is safer.

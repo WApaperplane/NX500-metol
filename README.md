@@ -77,6 +77,17 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 | 相机自己关机 | `/mnt/mmc/nx-ks/pwrlog.txt` → `sh /opt/usr/nx-ks/pwrlog.sh dump 60` |
 | ssh 连不上 | 菜单 `IP: … [SSH on]`；`sh /opt/usr/nx-ks/ssh_hint.sh --start`；`/tmp/db.log` |
 
+### 紧急救砖：免拆机固件恢复（仅限 NX500 / Soft Brick Recovery）
+
+如果误操作（例如 `nx-on-wake` 安装异常、`systemctl rescue` 或系统/休眠损坏）导致 **NX500** 无法正常开机或进不了系统，可直接使用机内隐藏的免拆机恢复模式（无需拆机、无需短接主板、无需串口、无需 `downloader.bin`）：
+
+1. 准备官方原版未修改的 NX500 固件（如 v1.12），将 `nx500.bin` 解压到干净的 **FAT32** SD 卡根目录。
+2. 拔出电池，插入 SD 卡，将后背屏幕**完全向上翻起至自拍位**，装回电池（保持电源关闭）。
+3. 同时按住 **MOBILE (Wi-Fi)** + **AEL** + **全按快门**，再拨动电源开机。
+4. 出现蓝底 **Recovery Mode** 画面（`F/W Check` / `Update` / `Update Finish`）后松手，按提示**长按快门键**刷入 `nx500.bin`。
+
+> **注意**：务必使用官方未修改固件；刷写（`Updating / Do not power off.`）期间**严禁断电或拔电池**，直至出现 `Update Finish`。该组合键已在 `nx-on-wake` 软砖 NX500 上完整验证恢复正常开机；**未在 NX1 验证**（NX1 GPIO 不同且无翻转屏）。原理见 [`nx500-dnloader/docs/BOOT0_ANATOMY.md`](https://github.com/WApaperplane/nx500-dnloader/blob/main/docs/BOOT0_ANATOMY.md)（`GPIO_WIFI_KEY` 19、`GPIO_SHUTTER_KEY2` 27、`GPIO_FLIPUP_INT` 30、`GPIO_AEL_KEY` 31）。
+
 ## 安装
 
 1. 把 `info.tg`、`nx_cs.adj`、`install.sh`、`scripts/` 放到 **SD 卡根目录**（或把 `Metol-<version>.zip` 解压到根目录）。
@@ -87,6 +98,8 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 - 两个包：`Metol-<ver>.zip`（中文）与 `Metol-<ver>-EN.zip`（英文菜单 + 英文 NXUI 面板 + 英文 README）。功能完全相同，只有文案语言不同。装错语言再装回另一个包即可，`nxui/lang` 随包覆盖。
 - 再插一次卡 = **增量同步**（只覆盖、不删除；永不自动卸载）；卸载走相机菜单里的 `卸载模块`。
 - 安装 / 同步 / WiFi push / 回滚：[SYNC.md](SYNC.md)（中英双语）。
+
+- 遇软砖无法开机？见上方「[紧急救砖：免拆机固件恢复（仅限 NX500 / Soft Brick Recovery）](#紧急救砖免拆机固件恢复仅限-nx500--soft-brick-recovery)」。
 
 ## 远程登录（SSH）
 

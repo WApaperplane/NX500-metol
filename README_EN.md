@@ -75,6 +75,17 @@ Everything under `/tmp` is gone at that moment.
 | The camera powers itself off | `/mnt/mmc/nx-ks/pwrlog.txt` → `sh /opt/usr/nx-ks/pwrlog.sh dump 60` |
 | SSH unreachable | menu `IP: … [SSH on]`; `sh /opt/usr/nx-ks/ssh_hint.sh --start`; `/tmp/db.log` |
 
+### Emergency Recovery: Unbrick Without Disassembly (NX500 Only)
+
+If a soft brick leaves your **Samsung NX500** unable to boot normally (for example after an `nx-on-wake` failure or `systemctl rescue`), you can trigger the built-in firmware recovery mode without disassembly, motherboard shorting, UART, or `downloader.bin`:
+
+1. Extract an official, unmodified `nx500.bin` (e.g. v1.12) to the root of a clean **FAT32** SD card.
+2. Remove the battery, insert the SD card, flip the rear display **fully upward into the selfie position**, and reinsert the battery (power OFF).
+3. Hold **MOBILE (Wi-Fi) + AEL + full Shutter** simultaneously, then switch the camera **ON**.
+4. When **Recovery Mode** appears (`F/W Check` / `Update` / `Update Finish`), release the buttons and **hold the shutter button** as prompted to flash `nx500.bin`.
+
+> **Warnings & scope:** Use official, unmodified firmware only and **do not power off or remove the battery** while `Updating` is in progress until `Update Finish` appears. Verified end-to-end on a soft-bricked **NX500** (`nx-on-wake`); **not verified on the NX1** (different GPIOs, no flip-up screen). Technical details: [`nx500-dnloader/docs/BOOT0_ANATOMY.md`](https://github.com/WApaperplane/nx500-dnloader/blob/main/docs/BOOT0_ANATOMY.md) (`GPIO 19/27/30/31`).
+
 ## Install
 
 1. Put `info.tg`, `nx_cs.adj`, `install.sh` and `scripts/` at the **root of the SD card** (or unzip `Metol-<version>.zip` there).
@@ -85,6 +96,8 @@ Everything under `/tmp` is gone at that moment.
 - Two packages: `Metol-<ver>.zip` (Chinese) and `Metol-<ver>-EN.zip` (English menus, English NXUI panel, English README). Identical features. Installing the other package swaps the language back; `nxui/lang` is overwritten by the package.
 - Inserting the card again = **incremental sync** (overwrite only, never delete, never auto-uninstall); uninstall from the camera menu (`Uninstall`).
 - Install / sync / WiFi push / rollback: [SYNC.md](SYNC.md) (bilingual).
+
+- Soft-bricked and unable to boot? See [Emergency Recovery: Unbrick Without Disassembly (NX500 Only)](#emergency-recovery-unbrick-without-disassembly-nx500-only) above.
 
 ## Remote access (SSH)
 
