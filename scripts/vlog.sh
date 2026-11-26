@@ -28,6 +28,11 @@ BB=/opt/usr/nx-ks/busybox
 D=/opt/usr/nx-ks
 ARM=$D/vlog-arm.sh
 ENGINE=${VLOG_ENGINE:-$D/gamma/gamma-reload.sh}
+# Rootfs lacks sha256sum; Log117 carries a private BusyBox compatibility shim.
+if [ -d "$(dirname "$ENGINE")/compat" ]; then
+    PATH="$(dirname "$ENGINE")/compat:$PATH"
+    export PATH
+fi
 POP=$D/popup_timeout
 GATELOG=/tmp/nx-p0/vlog-gate.log
 RUN=/tmp/nx-lut-lite
@@ -120,13 +125,19 @@ do_curve() {   # $1 = toggle | log | restore
         pop "V-Log 失败: ${reason:-rc=$rc}" 4
         return "$rc"
     fi
-    # 回原厂之后再确认一次视频选择器：DYN24 全指 A18 是黑屏的直接原因，
-    # 而 clean-log-release 里那一步有可能被跳过（半状态时 policy 已经没了）。
-    if [ -f "$RUN/session/video_enabled" ]; then
-        "$D/gamma/bin/nx_regtabwrite.arm" dyn-restore >/dev/null 2>&1 \
-            && say VIDEO_POINTERS restored
-    fi
     mode=$(field "$out" mode)
+    # Only restore video pointers after a confirmed factory transition. The
+    # marker may also be present after enabling Log, when restoring them would
+    # undo part of the active session. A failed restore is a partial result.
+    if [ "$mode" = FACTORY ] && [ -f "$RUN/session/video_enabled" ]; then
+        if "$D/gamma/bin/nx_regtabwrite.arm" dyn-restore >/dev/null 2>&1; then
+            say VIDEO_POINTERS restored
+        else
+            say RESULT PARTIAL_VIDEO_POINTERS_UNCONFIRMED
+            pop "视频指针恢复未确认" 4
+            return 1
+        fi
+    fi
     case "$mode" in
     LOG)     pop "V-Log 已上曲线" 3 ;;
     FACTORY) pop "已回原厂 gamma" 3 ;;

@@ -1,0 +1,5 @@
+# Template only: verify exact original ExecStart and arguments on the device before use.
+# Do not install until capture gates, backup, rollback and dependencies are verified.
+[Service]
+ExecStart=
+ExecStart=/bin/sh /usr/local/lib/nx-eye-af/launch.sh

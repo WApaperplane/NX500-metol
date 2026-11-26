@@ -1,4 +1,9 @@
 #!/bin/sh
+# Log117 is a separately pinned profile; legacy RC5 remains available below.
+if [ "${1:-}" = log117 ]; then
+    shift
+    exec /bin/sh "$(dirname "$0")/gamma-log117-install.sh" "$@"
+fi
 # gamma-install.sh — 把 RC5 的 V-Log 曲线引擎整棵装进机身（幂等，带哈希验收）
 #
 # ── 用法 ──────────────────────────────────────────────────────────────

@@ -1,0 +1,12 @@
+[Unit]
+Description=NX500 Metol Eye AF resume gate
+DefaultDependencies=no
+After=hib_post.service
+Before=shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/tmp/.hib_post
+
+[Service]
+Type=oneshot
+TimeoutSec=90
+ExecStart=/bin/sh /usr/local/lib/nx-eye-af/wake.sh

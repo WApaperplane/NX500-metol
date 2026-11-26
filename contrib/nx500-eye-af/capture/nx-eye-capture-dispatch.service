@@ -1,0 +1,15 @@
+[Unit]
+Description=NX500 operator-ready Eye capture dispatch
+DefaultDependencies=no
+IgnoreOnIsolate=yes
+Before=shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=simple
+WorkingDirectory=/
+ExecStart=/bin/sh /usr/local/lib/nx-eye-af/wait-wireless.sh --operator-ready
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+TimeoutStopSec=10

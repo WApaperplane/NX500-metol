@@ -38,7 +38,7 @@ SELF=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)
 PRIV=${VLOG_PRIV_ROOT:-/opt/usr/nx-lut-lite}
 STATE=$PRIV/state
 UCFG=$STATE/usb-config
-GUARD=${VLOG_GUARD:-$CAP/bin/nxl-usb-guard.arm}
+GUARD=${VLOG_GUARD:-$KS/gamma/bin/nxl-usb-guard.arm}
 BASE=$UCFG/last-good.bin
 
 say() { printf '%s=%s\n' "$1" "$2"; }
@@ -119,7 +119,7 @@ arm)
     ensure_private_state || die PRIVATE_STATE_CREATE_FAILED 1
     run_guard VLOG_ARM
     grc=$?
-    [ "$grc" = 3 ] && die GUARD_MISSING 3
+    [ "$grc" = 0 ] || die GUARD_PREFLIGHT_FAILED "$grc"
     run_preflight
     exit $?
     ;;
@@ -134,7 +134,7 @@ repair)
     ensure_private_state || die PRIVATE_STATE_CREATE_FAILED 1
     run_guard VLOG_REPAIR
     grc=$?
-    [ "$grc" = 3 ] && die GUARD_MISSING 3
+    [ "$grc" = 0 ] || die GUARD_PREFLIGHT_FAILED "$grc"
     run_preflight
     exit $?
     ;;
