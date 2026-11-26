@@ -43,6 +43,12 @@ fail() { echo "RESULT=$1" >&2; exit 1; }
 drop=/etc/systemd/system/hibernation.service.d
 [ ! -e "$drop" ] && [ ! -L "$drop" ] || fail FOREIGN_CAPTURE_OVERRIDE
 backup=$state/capture-writers-before
+# A withdrawn install leaves its backup behind. Re-installing must archive that
+# directory instead of failing, otherwise one withdraw locks the body for good.
+if [ -d "$backup" ]; then
+ [ "$(tail -n 1 "$backup/status" 2>/dev/null)" = "phase=GUARDS_WITHDRAWN" ] || fail BACKUP_EXISTS
+ mv "$backup" "$state/capture-writers-before.archived-$(date +%Y%m%d%H%M%S)" || fail BACKUP_ARCHIVE_FAILED
+fi
 mkdir "$backup" || fail BACKUP_EXISTS
 cp /usr/bin/hibernation.sh "$backup/hibernation.sh"
 cp /usr/bin/make_snapshot.sh "$backup/make_snapshot.sh"
@@ -88,6 +94,9 @@ PINS = {
     "usr/bin/hibernation.sh": "dd3687d3231ec32bbdcaaf3aac3015842f4ec703269a5eef71213e3e75447361",
     "usr/bin/make_snapshot.sh": "08df6e37016b022944f4d928edf6bb95477327d705001d1af75ad367d198b8c1",
 }
+# The protected header shipped by the r2 build. The body currently carries this
+# one, so withdraw must be able to match it before r3/r4 is installed.
+LEGACY_HEADER = "1e2bcf8383c0193c9bbe5f21b882d8bef14a765897bf50fc01c5b49447296ab2"
 LED = b"echo timer > /sys/class/leds/card/trigger\n"
 ANNOUNCE = b'echo "Starting hibernation ... "\n'
 IMAGE_WRITE = b"/bin/dd if=/dev/zero of=$SNAPSHOT_DEV bs=512 count=1\n"
@@ -159,6 +168,18 @@ def build(backup, output):
             raise ValueError("Missing template token " + token)
         rescue = rescue.replace(token, value)
     files["arm-rescue.sh"] = rescue.encode()
+    # The withdraw script is the only way back to the stock writers. It pins the
+    # writers it is allowed to replace, so both the legacy r2 pair still on the
+    # body and this build's pair are accepted; anything else is left alone.
+    withdraw = (ROOT / "contrib/nx500-eye-af/capture/withdraw-guards.sh").read_text()
+    for token, value in (("@W_HEADER@", hashlib.sha256(files["hibernation.sh"]).hexdigest()),
+                         ("@W_HEADER_LEGACY@", LEGACY_HEADER),
+                         ("@W_FACTORY@", hashlib.sha256(files["make_snapshot.sh"]).hexdigest()),
+                         ("@W_GUARD@", hashlib.sha256(guard).hexdigest())):
+        if token not in withdraw:
+            raise ValueError("Missing withdraw token " + token)
+        withdraw = withdraw.replace(token, value)
+    files["withdraw-guards.sh"] = withdraw.encode()
     output.mkdir(parents=True)
     for name, data in files.items():
         (output / name).write_bytes(data)
