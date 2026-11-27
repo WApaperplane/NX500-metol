@@ -34,6 +34,16 @@ README), with release notes in both languages.
 > the combos.
 > All combos are "hold EV, then press the other key". A plain WiFi press is still the camera's own WiFi toggle.
 
+Installed, and now want to know what each menu item does or which log to read when something
+breaks? Jump to [Camera menu](#camera-menu) and
+[Troubleshooting](#troubleshooting-read-the-log-before-touching-anything).
+
+> **Soft-bricked and won't boot?** No disassembly, no shorting, no UART: see
+> [Emergency Recovery: Unbrick Without Disassembly](#emergency-recovery-unbrick-without-disassembly-nx500-only).
+> The combo is **MOBILE(Wi-Fi) + AEL + full Shutter**, rear screen flipped into the selfie
+> position, reflashing **official** firmware from a clean FAT32 card — verified end-to-end on a
+> soft-bricked NX500.
+
 ## Troubleshooting: read the log before touching anything
 
 ### Four recovery commands
