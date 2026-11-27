@@ -127,7 +127,7 @@ echo BACKUP=$backup
 def build(payload, output):
     payload, output = Path(payload), Path(output)
     manifest = json.loads((payload / "manifest.json").read_text())
-    if manifest.get("profile") != "eye-yunet32":
+    if manifest.get("profile") not in ("eye-yunet32", "eye28-native"):
         raise ValueError("Wrong profile")
     files = manifest["files"]
     for f in files:

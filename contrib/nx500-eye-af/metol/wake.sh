@@ -6,7 +6,11 @@ root=
 if [ "${1:-}" = --test-root ]; then root=${2:?}; fi
 state=$root/opt/usr/nx-eye-af
 run=$root/tmp/nx-lut-lite
-lib=/usr/local/lib/nx-eye-af/nxl-eye-af-yunet.so
+lib=
+for cand in nxl-eye-af.so nxl-eye-af-yunet.so; do
+ [ -f "/usr/local/lib/nx-eye-af/$cand" ] || continue
+ lib=/usr/local/lib/nx-eye-af/$cand; break
+done
 fail() { echo "$1" >&2; exit 1; }
 regular() { [ -f "$1" ] && [ ! -L "$1" ]; }
 normal() {
@@ -17,6 +21,7 @@ normal() {
 }
 if [ -z "$root" ]; then /bin/sh /usr/local/lib/nx-eye-af/verify-payload.sh || fail PAYLOAD_UNVERIFIED; fi
 normal || fail NOT_NORMAL_RESUME
+[ -n "$lib" ] || fail LIBRARY_MISSING
 [ -d "$state" ] && [ ! -L "$state" ] || fail STATE_MISSING
 for f in armed capture-origin launch-claim; do regular "$state/$f" || fail PROOF_MISSING; done
 if command -v cmp >/dev/null 2>&1; then

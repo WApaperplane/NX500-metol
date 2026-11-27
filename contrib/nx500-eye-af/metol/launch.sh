@@ -1,9 +1,17 @@
 #!/bin/sh
 # Camera service wrapper; safe fallback always execs the stock app.
 state=/opt/usr/nx-eye-af
-lib=/usr/local/lib/nx-eye-af/nxl-eye-af-yunet.so
+# Either backend may be installed: nxl-eye-af.so is the unmodified upstream
+# algorithm, nxl-eye-af-yunet.so adds the 32x32 INT8 detector. verify-payload.sh
+# pins whichever one the packager shipped, so probe instead of hard-coding.
+lib=
+for cand in nxl-eye-af.so nxl-eye-af-yunet.so; do
+ [ -f "/usr/local/lib/nx-eye-af/$cand" ] && [ ! -L "/usr/local/lib/nx-eye-af/$cand" ] || continue
+ lib=/usr/local/lib/nx-eye-af/$cand; break
+done
 app=/usr/apps/com.samsung.di-camera-app/bin/di-camera-app
 eligible() {
+ [ -n "$lib" ] || return 1
  # Keep the existing T2 premount. Only these independently audited binaries
  # may receive the preload; unknown applications retain native startup.
  identity=$(/opt/usr/nx-ks/busybox sha256sum "$app") || return 1

@@ -1,31 +1,60 @@
-# Eye AF 28 · 从原厂基线重新布置（未上机）
+# EYE28 · 部署侧布置（未上机）
 
-生成时间 2026-11-27 · 机身：NX500 1.12 + NX-KS2 主模块 + Log117 gamma 树
-状态：**只做了 PC 侧准备，机身未写入任何文件**
-
----
-
-## 这套东西是什么
-
-刷机把 `/opt/usr` 上的 Eye 全清了（`/opt/usr/nx-eye-af`、`/usr/local/lib/nx-eye-af`、写入器守卫都不在），
-所以不再走 r1→r5 的修补链，改成**从当前原厂基线一次装到位**。
-
-| 目录 | 内容 | 谁生成 |
-|---|---|---|
-| `00-payload/` | 11 文件：`nxl-eye-af-yunet.so`(0955e5d9)、`claim.arm`、`launch.sh`、`wake.sh`、`nx-eye-resume.service`、conf 模板、License、`verify-payload.sh`、`manifest.json` | `contrib/nx500-eye-af/build_metol_bundle.py` |
-| `10-prepare/` | `prepare.sh` + `prepare.tar` | `tools/extensions/build_eye_prepare.py` |
-| `20-guards/` | 9 文件守卫包（hibernation 双段门禁、guard、arm-rescue、battery-gate、withdraw、install） | `tools/extensions/build_eye_capture.py` |
-| `30-verify/` | `check-before-install.sh`（只读预检） | 本目录 |
-
-**关键：payload 是从 `contrib/` 源码现打的，不是复用历史目录。**
-`_deliverables/eye-yunet32-payload-20261126` 里是旧 `launch.sh`（`91498f19`），
-现源码是 `8fa47d5c`，直接拿历史包会装错。
+生成 2026-11-27 · 机身：NX500 1.12 + NX-KS2 主模块 + Log117 gamma 树
+状态：**PC 侧完成，机身未写入任何文件**
 
 ---
 
-## 上机顺序
+## 这套是什么关系
 
-### 第 0 步 · 只读预检（必须 `READY_FOR_PREPARE`）
+`contrib/nx500-eye28/`（Terra，17:17–17:42）是**离线安全审查包**：算法原版（`e167e84a`，
+上游 `eafc274`）、部署硬禁用、`eye28-verify.arm` 无论传什么都输出 `NATIVE`、
+`runtime/launch.sh` 只是选择器模型不 exec App。SAFETY_REVIEW 明确列了四条设备门禁未过。
+
+本目录补的是它缺的**部署侧**：把同一份库接进已在 PC 回放验证过的注入/恢复/守卫骨架。
+
+| 层 | 来源 |
+|---|---|
+| 库 `nxl-eye-af.so` | `contrib/nx500-eye28/out/`，`e167e84a…`，与上游逐字节一致 |
+| `launch.sh` / `wake.sh` | `contrib/nx500-eye-af/metol/`，改为按文件探测后端 |
+| `claim.arm` | `contrib/nx500-eye-af/out/`（`c2f141a7…`） |
+| prepare / guards | `tools/extensions/build_eye_prepare.py`、`build_eye_capture.py` |
+
+**没有做**：没有把 `eye28-verify.arm` 接进来。它是审查用 helper（生产恒返回 `NATIVE`），
+接进启动链等于自欺。注入判定仍走 `claim.arm` 的实际 maps 校验。
+
+---
+
+## 两个后端，一套骨架
+
+`build_metol_bundle.py --lib <库>` 按文件名选 profile：
+
+| 库 | profile | 载荷文件数 | 说明 |
+|---|---|---|---|
+| `nxl-eye-af.so` | `eye28-native` | 8 | 上游原版算法（本目录用的） |
+| `nxl-eye-af-yunet.so` | `eye-yunet32` | 10 | 加 32×32 INT8 YuNet，多两个 Notice |
+
+`launch.sh`/`wake.sh` 不再写死库名，按 `nxl-eye-af.so` → `nxl-eye-af-yunet.so` 顺序探测，
+`verify-payload.sh` 只 pin 实际装的那一个。
+
+---
+
+## 目录
+
+```
+00-payload/    8 文件 + manifest.json：nxl-eye-af.so(e167e84a)、claim.arm、launch.sh、
+               wake.sh、nx-eye-resume.service、conf 模板、LICENSE、verify-payload.sh
+10-prepare/    prepare.sh + prepare.tar
+20-guards/     9 文件守卫包（hibernation 双段门禁、guard、arm-rescue、battery-gate、
+               withdraw、install）
+30-verify/     check-before-install.sh（只读预检）
+```
+
+---
+
+## 上机顺序（现在不要执行）
+
+### 0 · 只读预检，必须 `READY_FOR_PREPARE`
 
 ```sh
 cd /e/NXWA/nx500-modding-work
@@ -39,75 +68,50 @@ sh "$D/30-verify/check-before-install.sh"
 '
 ```
 
-| 判据 | 含义 |
-|---|---|
-| `PASS UNIT_PIN` | `di-camera-app.service` 是 `ac1bab44…` |
-| `PASS T2_PIN` | `t2_premount.sh` 是 `99931046…` |
-| `PASS APP_COPY_PIN` | `di-camera-app.c2` 是 `ec395123…` |
-| `PASS APP_BINARY` | App 是 `ec395123…` 或 `55dcc781…` |
-| `PASS NO_FOOTPRINT` | 五个 Eye 路径都不存在 |
-| `PASS HEADER_WRITER` / `FACTORY_WRITER` | 两个写入器是原厂 |
-| `PASS USB_CLEAR` / `SNAPSHOT_IDLE` | USB=0、p9 不在 swap |
+判据：`UNIT_PIN`(ac1bab44) / `T2_PIN`(99931046) / `APP_COPY_PIN`(ec395123) / `APP_BINARY` /
+`NO_FOOTPRINT` / `HEADER_WRITER`(dd3687d3) / `FACTORY_WRITER`(08df6e37) / `USB_CLEAR` / `SNAPSHOT_IDLE`。
+任何 `FAIL` 停手。
 
-任何 `FAIL` 都不要往下走。`INFO` 行只是上下文（`GAMMA_TREE`、`METOL_BT_HOOK` 出现在预期之内）。
-
-### 第 1 步 · 装 prepare（只改文件，不动快照）
+### 1 · prepare（只改文件）
 
 ```sh
 bash tools/nx-ssh.sh cmd 'cd /mnt/mmc/eye28-20261127/10-prepare && sh prepare.sh install'
 ```
 
-期望：`RESULT=PREPARED_NOT_ARMED` + `BACKUP=/opt/usr/nx-eye-prepare-<tag>`
+期望 `RESULT=PREPARED_NOT_ARMED`。
 
-失败码：`FIRMWARE` / `SERVICE_CHANGED` / `T2_SCRIPT_CHANGED` / `T2_APP_CHANGED` /
-`PAYLOAD_MISMATCH` / `USB_CONNECTED` / `SNAPSHOT_BUSY` / `EXISTING_EYE_OR_OVERRIDE`
-
-### 第 2 步 · 装写入守卫（仍然不动快照）
+### 2 · guards（仍然不动快照）
 
 ```sh
 bash tools/nx-ssh.sh cmd 'sh /mnt/mmc/eye28-20261127/20-guards/install-guards.sh'
 ```
 
-期望：`RESULT=GUARDS_INSTALLED_NOT_ARMED`
+期望 `RESULT=GUARDS_INSTALLED_NOT_ARMED`。要求写入器是原厂，顺序不能反。
 
-失败码见 `docs/current/EYE_GUARDS_R4_INSTALL_GUIDE_2026-11-26.md` 第 4 节。
-注意这条要求写入器是**原厂**，所以顺序不能反；装过守卫要先 `withdraw-guards.sh`。
-
-### 第 3 步 · 只读核验装完的样子
-
-```sh
-bash tools/nx-ssh.sh cmd '
-B=/opt/usr/nx-ks/busybox
-$B sha256sum /usr/local/lib/nx-eye-af/*.sh /usr/local/lib/nx-eye-af/*.so /usr/local/lib/nx-eye-af/claim.arm
-cat /opt/usr/nx-eye-prepare-*/status
-cat /opt/usr/nx-eye-af/capture-writers-before/status
-systemctl show di-camera-app.service -p ExecStart
-systemctl --all show hib_post.service -p Wants
-'
-```
+### 3 · 只读核验
 
 | 项 | 期望 |
 |---|---|
-| 库 | `0955e5d9…` |
+| `/usr/local/lib/nx-eye-af/nxl-eye-af.so` | `e167e84a…` |
 | prepare status | `phase=PREPARED_NOT_ARMED` |
 | guards status | `phase=GUARDS_INSTALLED_NOT_ARMED` |
-| ExecStart | `/bin/sh /usr/local/lib/nx-eye-af/launch.sh` |
-| Wants | 含 `nx-eye-resume.service` |
+| `systemctl show di-camera-app.service -p ExecStart` | 指向 `launch.sh` |
+| `hib_post.service` Wants | 含 `nx-eye-resume.service` |
 
-**到这里为止都没有写入 p9，也没有 arm。相机行为与装之前完全一致**（`launch.sh` 的 `eligible()`
-要求 `armed` 存在，没有它就走 `exec "$app" "$@"` 原厂路径）。
+三步做完相机行为与装之前一致：`eligible()` 要求 `armed` 存在，没有就走原厂 `exec`。
 
 ---
 
-## 这套还没做的事
+## 仍未过的门禁（来自 SAFETY_REVIEW）
 
-| 没做 | 为什么 |
-|---|---|
-| `arm` + `rebuild` | 快照一旦重写就只能整块回滚，且 `bootmode 1\|3` 是否真的经过 `ExecStart` 还没实测 |
-| 守卫升 r5 | r5 要接受 `launch.sh` 形态的 App，只有 rebuild 时才用得上，现在改等于引入未验证改动 |
-| 与 metol 门禁合并 | 方案在 `docs/current/EYE_VLOG_METOL_COEXIST_2026-11-27.md`，T1 未验完 |
+| # | 门禁 | 本目录状态 |
+|---|---|---|
+| 1 | 只读核实恢复后 App / T2 / libcapture / libface 与符号布局 | 未做（预检只核 App 与三个 pin） |
+| 2 | 镜像头、快照代次与写入报告的可信关联 | 未做（守卫只保证拒绝时交回原厂） |
+| 3 | 制作快照前的预加载接线与资源所有权回退 | **本目录补的就是这层**，但只在 PC 回放验证 |
+| 4 | 备份与恢复路径核实后再做真实快启/休眠/对焦测试 | 未做 |
 
-回滚：`sh 20-guards/withdraw-guards.sh` → `sh 10-prepare/prepare.sh rollback <backup>`。
+`RTLD_NEXT` 绑定失败返回 `-1` 的缺陷仍在上游算法里，不因本布置而消失。
 
 ---
 
@@ -117,4 +121,4 @@ systemctl --all show hib_post.service -p Wants
 cd /e/NXWA/_deliverables/eye28-20261127 && sha256sum -c manifest.sha256
 ```
 
-（WSL 里跑，Windows 的 `sha256sum` 由 Git Bash 提供，路径要注意。）
+回滚：`sh 20-guards/withdraw-guards.sh` → `sh 10-prepare/prepare.sh rollback <backup>`。
