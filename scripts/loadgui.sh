@@ -7,7 +7,11 @@
 #   现改为【读一次文件 + bash 内部分行】，0 个 grep 子进程。
 #   其余行为与社区原版逐字保持一致（prefman 偏移、DIALMODE 映射、gen_menu、mod_gui）。
 BB=/opt/usr/nx-ks/busybox
-if [ -x /opt/usr/nx-ks/nxui.sh ] && /opt/usr/nx-ks/nxui.sh available; then
+# ★ 2026-11-28：EV_EV.sh 的兜底要的是**经典 popup**，不是"再试一次 nxui"。
+#   面板二进制坏掉时（能 exec、随即退出），这里若照旧走 nxui 分支，等于把失败
+#   重放一遍 —— classic 起的 loadgui 又拉起同一个坏面板，mod_gui 永远轮不到，
+#   用户依旧被锁死。classic() 会带 NXUI_FALLBACK=1 进来，明确要求走经典路径。
+if [ "${NXUI_FALLBACK:-0}" != 1 ] && [ -x /opt/usr/nx-ks/nxui.sh ] && /opt/usr/nx-ks/nxui.sh available; then
     /opt/usr/nx-ks/nxui.sh menu
     exit $?
 fi

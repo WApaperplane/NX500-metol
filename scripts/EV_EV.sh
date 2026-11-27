@@ -9,7 +9,9 @@
 classic() {
     [[ $(echo $(st cap capdtm getusr MONITOROUT) | grep LCD) > ""  ]] || { $(st app bb lcd on; st app disp lcd) &&  sleep 1 ; } &
     killall -q mod_gui
-    nice -n -15 /opt/usr/nx-ks/loadgui.sh&
+    # ★ 2026-11-28：必须带 NXUI_FALLBACK=1。loadgui.sh 自己也会优先走 nxui，
+    #   否则这里"回退经典菜单"会变成"再起一次同一个坏面板"，mod_gui 永远不到。
+    NXUI_FALLBACK=1 nice -n -15 /opt/usr/nx-ks/loadgui.sh&
     killall -q popup_entry & killall -q popup_ok &  killall -q focus_stack & killall -q focus_buttons & killall -q onscreen_ov &  killall -q onscreen_235 &
 }
 
