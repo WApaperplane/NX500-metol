@@ -37,7 +37,10 @@ p ETC_SNAPSHOT "$(has /etc/snapshot)"
 p TMP_HIB_READY "$(has /tmp/.hib_ready)"
 p TMP_HIB_POST "$(has /tmp/.hib_post)"
 p OPT_ETC_HIB_CAPTURING "$(has /opt/etc/.hib_capturing)"
-p ROOT_LINE "$(mount 2>/dev/null | grep -E ' / ' | head -1)"
+# ★ 2026-11-28：mount 里 "/" 有两行——initramfs 的 `rootfs ... rw` 在前、
+#   真正的 `/dev/root ... ro` 在后。head -1 会取到 rootfs 那行，把 ro 误判成 rw。
+p ROOT_LINE "$(mount 2>/dev/null | grep -E ' on / type ' | grep -v '^rootfs ' | head -1)"
+p ROOT_LINE_RAW "$(mount 2>/dev/null | grep -E ' on / type ' | tr '\n' '|')"
 p OPT_USR_LINE "$(mount 2>/dev/null | grep -E ' /opt/usr ' | head -1)"
 
 echo "## 2 p9"
