@@ -35,12 +35,18 @@ if [ -x /opt/usr/nx-ks/nxui.sh ] && /opt/usr/nx-ks/nxui.sh available; then
     #   仍未覆盖的一种：进程活着但窗口没显示——那需要在 nxui.arm 里
     #   XMapWindow+flush 之后回写一个 ready 文件，属面板侧改动，未做。
     (
+        # 等待原语要探测：$BB usleep 正常一直在，但若它缺失、`sleep 0.05` 又不支持
+        # 小数（busybox 常见），两者都会立刻返回 ⇒ 20 次循环变忙等，存活窗口退化成 0，
+        # 兜底自己就失效了。所以先测一次，选一个真的会等的。
+        if $BB usleep 1000 2>/dev/null; then w() { $BB usleep 50000; }
+        elif sleep 0.05 2>/dev/null; then w() { sleep 0.05; }
+        else w() { sleep 1; }; fi
         i=0
         seen=
         while [ $i -lt 20 ]; do
             p=$($BB pidof nxui.arm 2>/dev/null)
             if [ -n "$p" ]; then seen=${p%% *}; break; fi
-            $BB usleep 50000 2>/dev/null || sleep 0.05
+            w
             i=$((i + 1))
         done
         if [ -z "$seen" ]; then
@@ -50,7 +56,7 @@ if [ -x /opt/usr/nx-ks/nxui.sh ] && /opt/usr/nx-ks/nxui.sh available; then
         fi
         i=0
         while [ $i -lt 8 ]; do
-            $BB usleep 50000 2>/dev/null || sleep 0.05
+            w
             c=$($BB pidof nxui.arm 2>/dev/null)
             if [ -z "$c" ] || [ "${c%% *}" != "$seen" ]; then
                 echo "EV_EV: 面板启动后 400 ms 内退出或重启（pid $seen → ${c:-none}），回退经典菜单" >> /tmp/nxui.log
