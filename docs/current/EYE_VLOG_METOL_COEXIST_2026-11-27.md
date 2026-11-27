@@ -2,6 +2,11 @@
 
 日期 2026-11-27 · 交给 Terra 实现 · 当前机身状态：r2 守卫在位，Eye 仅 prepare，Log117 仅文件层，未重建过快照
 
+> ⚠ 2026-11-27 晚补正：**§2 与 §8 的「自造 `modstack.sh` 事务器」已被推翻。**
+> 上游 0.4.0 R1 的 `stage-postflash.py` + `coexist_rebuild.py` 就是同一台机、同一条流程的完整安装器，
+> 且它**不重写 `di-camera-app.service` 的 `ExecStart`**（走 `hib_post.service → resume unit → wake.sh`），
+> 与我们 `launch.sh` 路线冲突。动手前先读 `REBUILD_PATH_DECISION_2026-11-27.md`。
+
 ---
 
 ## 0 结论
@@ -236,6 +241,9 @@ ACTIVE
 | T7 | 上机脚本 + 教程（一步一判据） | `docs/current/MODSTACK_INSTALL_GUIDE.md` | T1-T6 |
 
 **T1 不通过就不要写 T2 以后的代码。** 现在整条链的关键未知只有一个：重建那次开机是否经过 ExecStart。这一点是 2026-10-16 的 P5 事故反过来证明的——unit 改动对恢复路径无效，但**对 bootmode 1|3 是否有效，从未直接验过**。
+
+> ⚠ 2026-11-27 晚：**T2/T3 暂停。** 上游 0.4.0 R1 已经用 `hib_post` 路线绕开了「制作那次是否 exec」这个未知量——它的统一入口在**恢复之后**介入，不需要 `ExecStart` 改写，因此也不依赖 V2。
+> 先把 `REBUILD_PATH_DECISION_2026-11-27.md` §5 的路线裁决做完；裁决结果可能是 T2/T3 整段作废。
 
 ---
 
