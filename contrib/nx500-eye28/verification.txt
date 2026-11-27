@@ -1,0 +1,78 @@
+EYE28 metol offline review evidence — 2026-11-27
+
+Scope: local computer / WSL only. No camera connection, SD write, deployment or capture.
+Coder: GPT-6.1 Terra agents; parent reviews and runs verification.
+
+Source comparison (PowerShell Get-FileHash SHA256 against fixed upstream checkout):
+src/eye-af.c                  identical
+src/eye_policy.h              identical
+src/exports.map               identical
+tests/dropout-replay.inc      identical
+tests/eye_replay.c            identical
+tests/replay.py               identical
+tests/scenario-sha256.json    identical
+
+Command (WSL):
+~/nx-eye-venv/bin/python contrib/nx500-eye28/build.py --zig "$HOME/nx-eye-venv/lib/python3.12/site-packages/ziglang/zig" --test
+Exit: 0
+Output:
+57 ARM scenarios matched. Stable sequence: 90 eye results, 0 temporary full-face exposures.
+
+Command: sha256sum contrib/nx500-eye28/out/nxl-eye-af.so
+Exit: 0
+e167e84a6be88b2fc21da13a5952a923ec7a032cb37612a11e047e60dc6c2e6e
+
+Command: readelf -h / --dyn-syms -W / -V on out/nxl-eye-af.so
+Exit: 0
+ELF32, little endian, ARM, DYN, Version5 EABI, soft-float ABI.
+Only global defined export: _ZN20CFaceDetection_Linux13FaceDetectionEPhiiii
+Versioned dependencies: GLIBC_2.4 (libpthread.so.0, libc.so.6, libdl.so.2, librt.so.1).
+
+Command (WSL, repository root):
+python3 -m unittest discover -s test_server/eye28
+Exit: 0
+Output:
+.......................................................................
+----------------------------------------------------------------------
+Ran 71 tests in 8.913s
+
+OK
+
+Coverage groups (distinct discovery cases):
+file/hash/maps 12; proc identity 5; native integration 8; proof parser 12;
+token lifecycle 10; wrappers including real host helper route 12;
+capture/selection models 4; packaging 5; historical Python prototype 3.
+The 4 model and 3 Python prototype cases are not native runtime evidence.
+An earlier 79-case run contained 8 duplicate imported cases; discovery was fixed.
+
+Reviewed regressions include p9 TAB separation; wrapper argv and LF protocol;
+NUL/trailing bytes in tokens; FIFO, symlink and writable directory refusal;
+PID/starttime reuse, changed proof/hash/maps, duplicate/concurrent publication;
+callback and IO cleanup; disabled production helper; archive hash/allowlist checks.
+Some failures contain multiple assertions. This count is not hardware coverage.
+
+Command (WSL): python3 contrib/nx500-eye28/build_runtime.py
+Exit: 0
+All runtime C modules compiled with -Wall -Wextra -Werror, O2:
+1. default ARM helper (deployment disabled)
+2. TEST_BUILD ARM helper (compile/ABI check only; excluded from archive)
+3. TEST_BUILD host helper (excluded from archive)
+
+Command: sha256sum out/eye28-verify.arm out/test-only/eye28-verify.arm
+Exit: 0
+927155c7381fb112f2ddcb7ac83b68b6d656acafe2bb6b83e55d0d59ceef09aa  out/eye28-verify.arm
+4a0b9b4d13d3dda046590994c293a7bb30e9412664593f06900a6ee9ea64170f  out/test-only/eye28-verify.arm
+
+Command: readelf -h / -V / -lW on default ARM helper
+Exit: 0
+ELF32 little endian ARM EXEC, EABI5 soft-float, /lib/ld-linux.so.3,
+GLIBC_2.4, GNU_RELRO, non-executable GNU_STACK. TEST_BUILD ARM header also
+ELF32 ARM EXEC EABI5 soft-float. ARM native runtime was cross-compiled,
+not executed on a camera. Functional native tests executed on the host.
+
+Review approval applies only to pinning the disabled default ARM helper into
+the offline archive. Production main always prints NATIVE and token publishing
+is compiled out. No CLI option enables production. This is not hardware approval.
+
+Archive construction and independent manifest validation follow this evidence
+record. The archive is an offline review artifact and includes deployment_allowed=false.

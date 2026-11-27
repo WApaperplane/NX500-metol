@@ -1,0 +1,15 @@
+{
+  "deployment_allowed": false,
+  "schema": 1,
+  "app": null,
+  "libraries": [],
+  "swap": null,
+  "token": "/tmp/nx-lut-lite/eye-af.resume-ready",
+  "historical_reference_only": {
+    "upstream_commit": "eafc274e0ef0b6cb95b5ad958b2f1ac86dfc3562",
+    "app_sha256": "55dcc78143724435a2e38b9e0d809960bd728668634bbcf7532ce137f882eb04",
+    "app_t2_sha256": "ec3951233eb81af69f4461cc2e8c44d247ec03f4467305cd8200b11f7f61bca4",
+    "libcapture_sha256": "a07867292610ac6376e29e3cd64bc79a274452412387fb7853c5a3fb3f96bba5",
+    "libface_sha256": "f2936a156173d48b1a54a6647da6d169f3bd8276c3d8448eca1f784ddd29047f"
+  }
+}
