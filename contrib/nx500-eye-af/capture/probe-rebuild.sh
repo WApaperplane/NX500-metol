@@ -22,7 +22,8 @@ BB=/opt/usr/nx-ks/busybox
 p() { printf '%s=%s\n' "$1" "$2"; }
 c() { if [ -r "$1" ]; then cat "$1" 2>/dev/null; else echo MISSING; fi; }
 h() { if [ -f "$1" ]; then "$BB" sha256sum "$1" 2>/dev/null | cut -d' ' -f1; else echo MISSING; fi; }
-m() { if [ -f "$1" ]; then "$BB" md5sum "$1" 2>/dev/null | cut -d' ' -f1; else echo MISSING; fi; }
+# 块设备不是普通文件：-f 对 /dev/mmcblk0p9 恒假，曾经因此恒输出 MISSING。
+m() { if [ -b "$1" ] || [ -f "$1" ]; then "$BB" md5sum "$1" 2>/dev/null | cut -d' ' -f1; else echo MISSING; fi; }
 has() { [ -e "$1" ] && echo present || echo missing; }
 
 echo "## 0 identity"

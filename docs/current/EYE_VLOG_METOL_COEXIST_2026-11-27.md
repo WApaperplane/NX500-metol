@@ -4,8 +4,12 @@
 
 > ⚠ 2026-11-27 晚补正：**§2 与 §8 的「自造 `modstack.sh` 事务器」已被推翻。**
 > 上游 0.4.0 R1 的 `stage-postflash.py` + `coexist_rebuild.py` 就是同一台机、同一条流程的完整安装器，
-> 且它**不重写 `di-camera-app.service` 的 `ExecStart`**（走 `hib_post.service → resume unit → wake.sh`），
-> 与我们 `launch.sh` 路线冲突。动手前先读 `REBUILD_PATH_DECISION_2026-11-27.md`。
+> 动手前先读 `REBUILD_PATH_DECISION_2026-11-27.md`。
+>
+> ⚠ **2026-11-28 再纠正（本条上一版说错了）**：上面原写「且它**不重写 `ExecStart`**……与我们 `launch.sh` 路线冲突」——**错**。
+> 上游是两段并存：制作段确实装 `ExecStart=/bin/sh /usr/local/lib/nxl-full040/launch.sh` 并以 `ROOT_LAUNCHER_NOT_SELECTED` 当硬门
+> （`fast-start/nxl-full040/worker.sh:333-337`），恢复段才走 `hib_post → resume → wake.sh`。
+> ⇒ 与我们的 `launch.sh` **不冲突、同构**。详见 `REBUILD_PATH_DECISION_2026-11-27.md` §3、§5。
 
 ---
 
