@@ -5,7 +5,14 @@ import json
 from pathlib import Path
 import tarfile
 
-UNIT_SHA = "5f7824afd875a7073618401d3e157af1f909530be12f1db7dee179c2a79d7f5c"
+# 两个基线都有现场出处，不是二选一：
+#   STOCK = 321B 原厂 unit，逐字节等于 dicam_p5_install.sh 之前留下的 di-camera-app.service.p5.bak
+#   T2    = 371B 原厂 unit + ExecStartPre=-/opt/usr/nx-ks/dicam/t2_premount.sh（P5 注入后）
+# 两者都躺在 rea-evidence/20261126-eye-log117/startup-before.tar 里，谁都谈不上"没有现场出处"。
+# 差别是实打实的功能差别：t2_premount.sh 把 di-camera-app.c2 bind 到真实 app 上，
+# 原厂 unit 没有这一步 ⇒ app 指纹是 55dcc781（原厂）而不是 ec395123（c2）。
+UNIT_SHA_STOCK = "5f7824afd875a7073618401d3e157af1f909530be12f1db7dee179c2a79d7f5c"
+UNIT_SHA_T2 = "ac1bab448ef00c8038104742861d631dc3991d42ef9be575779af72ac778620d"
 T2_SHA = "99931046311096f82ff58f3d6cdf951baf1053427909d2de582364d9972139c7"
 APP_SHA = "ec3951233eb81af69f4461cc2e8c44d247ec03f4467305cd8200b11f7f61bca4"
 
@@ -26,7 +33,20 @@ fail() { echo "RESULT=$1" >&2; exit 1; }
 pin() { [ -f "$1" ] && [ ! -L "$1" ] && [ "$(hash "$1")" = "$2" ]; }
 check() {
  grep -q '^NX500$' /etc/version.info && grep -q '^1.12$' /etc/version.info || fail FIRMWARE
- pin /usr/lib/systemd/system/di-camera-app.service @UNIT@ || fail SERVICE_CHANGED
+ # ★ 变量名不能用 unit：外层 unit=/etc/systemd/system/nx-eye-resume.service 是待安装的
+ #   resume unit，check 与 install 同一个 shell，覆盖了它会把原厂相机 unit 写成 resume unit。
+ cunit=/usr/lib/systemd/system/di-camera-app.service
+ # 认两种机身基线，并记住是哪一种。原厂 unit 和 T2 版 unit 都能过指纹这一步，
+ # 区别留到下一段判：只有 T2 版才把前置挂载接进了启动链。
+ baseline=
+ if pin "$cunit" @UNIT_T2@; then baseline=t2
+ elif pin "$cunit" @UNIT_STOCK@; then baseline=stock
+ fi
+ [ -n "$baseline" ] || fail SERVICE_CHANGED
+ # T2 的两个文件指纹只能证明"文件在"，证明不了"接进启动链"——能证明的只有 unit 正文。
+ # 原厂 unit 上装 EYE 等于让 EYE 跑在原厂 app 上（55dcc781），那不是审计过的配置。
+ [ "$baseline" = t2 ] || fail T2_NOT_WIRED
+ grep -q '^ExecStartPre=-.*/t2_premount\.sh$' "$cunit" || fail T2_PIN_INCONSISTENT
  pin /opt/usr/nx-ks/dicam/t2_premount.sh @T2@ || fail T2_SCRIPT_CHANGED
  pin /opt/usr/nx-ks/dicam/di-camera-app.c2 @APP@ || fail T2_APP_CHANGED
  pin "$pkg/payload/verify-payload.sh" @VERIFY@ || fail UNTRUSTED_VERIFIER
@@ -76,7 +96,7 @@ backup=/opt/usr/nx-eye-prepare-$tag
 mkdir "$backup"
 cp /usr/lib/systemd/system/di-camera-app.service "$backup/camera.service.before"
 boot=$(cat /proc/sys/kernel/random/boot_id)
-printf 'boot_id=%s\nphase=PREPARING\n' "$boot" > "$backup/status"
+printf 'boot_id=%s\nbaseline=%s\nphase=PREPARING\n' "$boot" "$baseline" > "$backup/status"
 committed=0
 rw=0
 owned_rt=0; owned_state=0; owned_drop=0; owned_unit=0; owned_link=0
@@ -115,13 +135,18 @@ ln -s "$unit" "$link"; owned_link=1
 systemctl daemon-reload
 systemctl show di-camera-app.service -p ExecStart > "$backup/exec-after.txt"
 grep -Fq '/bin/sh /usr/local/lib/nx-eye-af/launch.sh' "$backup/exec-after.txt" || fail EXEC_NOT_SELECTED
+# drop-in 只清 ExecStart，ExecStartPre 应当原样保留。这里落一次实证：
+# 装完以后 T2 前置挂载仍在，才谈得上"T2 还接在启动链上"。
+systemctl show di-camera-app.service -p ExecStartPre > "$backup/execstartpre-after.txt"
+grep -Fq 't2_premount.sh' "$backup/execstartpre-after.txt" || fail T2_PREMOUNT_LOST
 systemctl --all show hib_post.service -p Wants > "$backup/wants-after.txt"
 tr '= ' '\n\n' < "$backup/wants-after.txt" | grep -Fqx nx-eye-resume.service || fail WANTS_NOT_LOADED
 [ ! -e "$state/armed" ] && [ ! -e "$state/launch-claim" ] || fail UNEXPECTED_CAPTURE_RECORD
-printf 'phase=PREPARED_NOT_ARMED\nbackup=%s\n' "$backup" >> "$backup/status"
+printf 'phase=PREPARED_NOT_ARMED\nbaseline=%s\nbackup=%s\n' "$baseline" "$backup" >> "$backup/status"
 sync
 committed=1
 echo RESULT=PREPARED_NOT_ARMED
+echo BASELINE=$baseline
 echo BACKUP=$backup
 '''
 
@@ -142,7 +167,16 @@ def build(payload, output):
     verifier = hashlib.sha256((payload / "verify-payload.sh").read_bytes()).hexdigest()
     if verifier != manifest["verifier_sha256"]:
         raise ValueError("Verifier changed")
-    script = SCRIPT.replace("@UNIT@", UNIT_SHA).replace("@T2@", T2_SHA).replace("@APP@", APP_SHA).replace("@VERIFY@", verifier)
+    script = (SCRIPT.replace("@UNIT_STOCK@", UNIT_SHA_STOCK)
+              .replace("@UNIT_T2@", UNIT_SHA_T2)
+              .replace("@T2@", T2_SHA)
+              .replace("@APP@", APP_SHA)
+              .replace("@VERIFY@", verifier))
+    # 占位符没被替换干净的脚本一旦上机，pin 会拿字面量 @XXX@ 去比哈希，
+    # 表现为恒 SERVICE_CHANGED——在生成期就拦掉，别让它跑到机身上去。
+    for token in ("@UNIT_STOCK@", "@UNIT_T2@", "@T2@", "@APP@", "@VERIFY@"):
+        if token in script:
+            raise ValueError("Unsubstituted placeholder " + token)
     if output.exists():
         raise ValueError("Output must be new")
     output.mkdir(parents=True)

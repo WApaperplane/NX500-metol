@@ -6,10 +6,11 @@ root=
 if [ "${1:-}" = --test-root ]; then root=${2:?}; fi
 state=$root/opt/usr/nx-eye-af
 run=$root/tmp/nx-lut-lite
+libroot=$root/usr/local/lib/nx-eye-af
 lib=
 for cand in nxl-eye-af.so nxl-eye-af-yunet.so; do
- [ -f "/usr/local/lib/nx-eye-af/$cand" ] || continue
- lib=/usr/local/lib/nx-eye-af/$cand; break
+ [ -f "$libroot/$cand" ] || continue
+ lib=$libroot/$cand; break
 done
 fail() { echo "$1" >&2; exit 1; }
 regular() { [ -f "$1" ] && [ ! -L "$1" ]; }
@@ -41,7 +42,12 @@ if [ -n "$root" ]; then resume=$(cat "$root/test-dmesg" 2>/dev/null); else resum
 printf '%s\n' "$resume" | grep -Fq 'kernel_resume start!' || fail RESUME_UNCONFIRMED
 pid=$(sed -n 's/^camera_pid=//p' "$claim")
 case "$pid" in ''|0|*[!0-9]*) fail INVALID_PID;; esac
-[ "$(readlink "$root/proc/$pid/exe" 2>/dev/null)" = /usr/apps/com.samsung.di-camera-app/bin/di-camera-app ] || fail CAMERA_MISMATCH
+exe=$(readlink "$root/proc/$pid/exe" 2>/dev/null)
+# 真机上 /proc/<pid>/exe 恒为符号链接。--test-root 下宿主未必有建链接的权限
+# （Windows 需 SeCreateSymbolicLinkPrivilege），夹具退化成"内容是目标路径的普通文件"。
+# 真机上这两条都不会命中：readlink 空 ⇒ root 也空 ⇒ exe 保持空 ⇒ 仍判 CAMERA_MISMATCH。
+[ -n "$exe" ] || [ -z "$root" ] || exe=$(cat "$root/proc/$pid/exe" 2>/dev/null)
+[ "$exe" = /usr/apps/com.samsung.di-camera-app/bin/di-camera-app ] || fail CAMERA_MISMATCH
 dev=$(sed -n 's/^mapped_dev=//p' "$claim"); ino=$(sed -n 's/^mapped_ino=//p' "$claim")
 [ -n "$dev" ] && [ -n "$ino" ] || fail INVALID_MAPPING
 awk -v d="$dev" -v i="$ino" -v p="$lib" '$4==d && $5==i && $2~/x/ && $6==p && NF==6 {ok=1} END {exit !ok}' "$root/proc/$pid/maps" || fail LIBRARY_MISMATCH
