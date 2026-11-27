@@ -25,17 +25,40 @@ if [ -x /opt/usr/nx-ks/nxui.sh ] && /opt/usr/nx-ks/nxui.sh available; then
         classic
         exit $rc
     fi
-    # 后台等 1 s：成功时第一次 pidof 就命中，等于零成本；失败时才走兜底，
+    # 后台等：成功时第一次 pidof 就命中，等于零成本；失败时才走兜底，
     # 而且不拖住按键线程（keyscan 是同步调用本脚本的）。
+    #
+    # ★ 命中 ≠ 起来（2026-11-28 补）：老二进制打一行 Usage 就 return 2，
+    #   进程在 pidof 抓到的那一瞬之后立刻消失，原来是「一命中就 exit 0」，
+    #   于是既不报错也不回退。现在命中后还要过 400 ms 存活窗口，
+    #   且 pid 必须始终是同一个（换了 pid = 崩过又被拉起，同样算失败）。
+    #   仍未覆盖的一种：进程活着但窗口没显示——那需要在 nxui.arm 里
+    #   XMapWindow+flush 之后回写一个 ready 文件，属面板侧改动，未做。
     (
         i=0
+        seen=
         while [ $i -lt 20 ]; do
-            [ -n "$($BB pidof nxui.arm 2>/dev/null)" ] && exit 0
+            p=$($BB pidof nxui.arm 2>/dev/null)
+            if [ -n "$p" ]; then seen=${p%% *}; break; fi
             $BB usleep 50000 2>/dev/null || sleep 0.05
             i=$((i + 1))
         done
-        echo "EV_EV: 面板 1 s 内未启动，回退经典菜单（面板日志见 /tmp/nxui.log）" >> /tmp/nxui.log
-        classic
+        if [ -z "$seen" ]; then
+            echo "EV_EV: 面板 1 s 内未启动，回退经典菜单（面板日志见 /tmp/nxui.log）" >> /tmp/nxui.log
+            classic
+            exit 0
+        fi
+        i=0
+        while [ $i -lt 8 ]; do
+            $BB usleep 50000 2>/dev/null || sleep 0.05
+            c=$($BB pidof nxui.arm 2>/dev/null)
+            if [ -z "$c" ] || [ "${c%% *}" != "$seen" ]; then
+                echo "EV_EV: 面板启动后 400 ms 内退出或重启（pid $seen → ${c:-none}），回退经典菜单" >> /tmp/nxui.log
+                classic
+                exit 0
+            fi
+            i=$((i + 1))
+        done
     ) &
     exit $rc
 fi

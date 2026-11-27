@@ -231,4 +231,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # 必须过 sys.exit：入口裸调 main() 时 return 2 会被解释器丢掉，
+    # 英文包被拒（check_en_panel 失败）仍以 0 退出，自动发布流程会误判成功。
+    sys.exit(main() or 0)
