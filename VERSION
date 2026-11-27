@@ -1,6 +1,6 @@
 Metol（米吐尔）— Samsung NX (DRIMe5 / Tizen) enhancement & research project
 
-version        1.15.9              （双语发行：CN/EN 双包 + 双语 release 说明）
+version        1.15.10             （双语发行：CN/EN 双包 + 双语 release 说明）
 repo           https://github.com/WApaperplane/metol
 branch         nxwa（仓库默认分支）
 upstream       https://github.com/ottokiksmaler/nx500_nx1_modding   ★ GitHub fork parent（实测）

@@ -1,8 +1,42 @@
 #!/bin/bash
+# 双击 EV：优先 nxui 面板；面板起不来就退回经典 popup（mod_gui）。
+#
+# ★ 2026-11-27 加回退：1.15.8/1.15.9 的英文包把「面板启动失败」变成了
+#   「整机没有菜单」——启动器传的新参数老二进制不认识，面板打一行 Usage
+#   就 return 2，而 nxui.sh 是后台起进程、照样 exit 0，于是双击 EV 看起来
+#   像没反应。卸载入口只在菜单里，用户当场被锁死。
+#   现在：面板 1 秒内没露面就自动拉起经典 popup，至少菜单（含卸载）还在。
+classic() {
+    [[ $(echo $(st cap capdtm getusr MONITOROUT) | grep LCD) > ""  ]] || { $(st app bb lcd on; st app disp lcd) &&  sleep 1 ; } &
+    killall -q mod_gui
+    nice -n -15 /opt/usr/nx-ks/loadgui.sh&
+    killall -q popup_entry & killall -q popup_ok &  killall -q focus_stack & killall -q focus_buttons & killall -q onscreen_ov &  killall -q onscreen_235 &
+}
+
+BB=/opt/usr/nx-ks/busybox
 if [ -x /opt/usr/nx-ks/nxui.sh ] && /opt/usr/nx-ks/nxui.sh available; then
+    # 先记下本来有没有面板：有 ⇒ 这一次是「再按一次关掉」，关掉后不该再弹菜单。
+    was=$($BB pidof nxui.arm 2>/dev/null)
     /opt/usr/nx-ks/nxui.sh menu
-    exit $?
+    rc=$?
+    [ -n "$was" ] && exit $rc
+    if [ $rc -ne 0 ]; then
+        echo "EV_EV: nxui.sh rc=$rc，回退经典菜单" >> /tmp/nxui.log
+        classic
+        exit $rc
+    fi
+    # 后台等 1 s：成功时第一次 pidof 就命中，等于零成本；失败时才走兜底，
+    # 而且不拖住按键线程（keyscan 是同步调用本脚本的）。
+    (
+        i=0
+        while [ $i -lt 20 ]; do
+            [ -n "$($BB pidof nxui.arm 2>/dev/null)" ] && exit 0
+            $BB usleep 50000 2>/dev/null || sleep 0.05
+            i=$((i + 1))
+        done
+        echo "EV_EV: 面板 1 s 内未启动，回退经典菜单（面板日志见 /tmp/nxui.log）" >> /tmp/nxui.log
+        classic
+    ) &
+    exit $rc
 fi
-[[ $(echo $(st cap capdtm getusr MONITOROUT) | grep LCD) > ""  ]] || { $(st app bb lcd on; st app disp lcd) &&  sleep 1 ; } & killall -q mod_gui 
-nice -n -15 /opt/usr/nx-ks/loadgui.sh&
-killall -q popup_entry & killall -q popup_ok &  killall -q focus_stack & killall -q focus_buttons & killall -q onscreen_ov &  killall -q onscreen_235 &
+classic

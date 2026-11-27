@@ -51,6 +51,36 @@ EXTRA_ASSETS = [
 EN_OVERLAY = 'i18n/en'          # 英文覆盖层：i18n/en/scripts/xxx → scripts/xxx
 EN_PANEL = ('scripts/nxui/nxui_en.arm', 'scripts/nxui/nxui.arm')
 
+# 英文面板必须认识的命令行开关 —— 与 scripts/nxui.sh 里那串 `set --` 一一对应。
+# ★ 2026-11-27 加这道门：1.15.8 起启动器开始传 --lut-recipes / --lut-engine /
+#   --lut-recipes-vlog，而英文包里的 nxui_en.arm 还是 11-14 编的，参数表里没有
+#   这三项 ⇒ 走到 else 分支打一行 Usage 就 return 2，面板一次都没起来。
+#   症状是「双击 EV 没反应、没有菜单可卸载」，而打包脚本当时只检查文件在不在。
+EN_PANEL_ARGS = (b'--lut-recipes', b'--lut-engine', b'--lut-recipes-vlog', b'--tab')
+EN_PANEL_SRC = ['test_server/nxui/nxui.c', 'test_server/nxui/nxui_model.c',
+                'test_server/nxui/nxui_services.c', 'test_server/nxui/i18n/en.json']
+
+
+def check_en_panel():
+    """打包英文包之前先证明这个二进制与当前源码同代，且认得启动器的全部参数。"""
+    src, _dst = EN_PANEL
+    if not os.path.isfile(src):
+        return '缺 %s —— 英文面板没编？先跑 test_server/nxui/build.sh arm-en' % src
+    blob = open(src, 'rb').read()
+    lost = [a.decode() for a in EN_PANEL_ARGS if a not in blob]
+    if lost:
+        return ('%s 不认识这些开关：%s\n'
+                '  启动器会传它们，面板会打一行 Usage 后 return 2（双击 EV 无反应）。\n'
+                '  重新编译：cd test_server/nxui && bash build.sh arm-en'
+                % (src, ', '.join(lost)))
+    t_panel = os.path.getmtime(src)
+    for f in EN_PANEL_SRC:
+        if os.path.isfile(f) and os.path.getmtime(f) > t_panel + 1:
+            return ('%s 比 %s 旧 —— 面板源码改过但英文二进制没重编。\n'
+                    '  重新编译：cd test_server/nxui && bash build.sh arm-en' % (src, f))
+    return None
+
+
 
 def version():
     for line in open('VERSION', encoding='utf-8'):
@@ -154,6 +184,11 @@ def main():
         return
 
     entries = build_entries(files, extras, lang)
+    if lang == 'en':
+        bad = check_en_panel()
+        if bad:
+            print('!! 英文包中止：' + bad)
+            return 2
     suffix = '' if lang == 'zh' else '-' + lang.upper()
     os.makedirs('dist', exist_ok=True)
     zpath = os.path.join('dist', 'Metol-%s%s.zip' % (ver, suffix))

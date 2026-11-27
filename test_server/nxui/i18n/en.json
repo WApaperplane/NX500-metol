@@ -112,5 +112,16 @@
   "配方表重读失败 · 见日志": "Recipe table reload failed · see log",
   "无法刷新库列表": "Cannot refresh the library",
   "后端启动失败": "Backend failed to start",
-  "到点做事": "Do it when due"
+  "到点做事": "Do it when due",
+  "LUT 层 · 选中即写 A18 槽": "LUT layer · selecting writes A18",
+  "FilmLab 层 · 选中即推 PW": "FilmLab layer · selecting pushes PW",
+  "正在应用 · 完成后再切范围": "Applying · switch scope when done",
+  "没有配 vlog 表清单": "No V-Log table list configured",
+  "V-Log 表目录为空 · 先导入 vlog 表": "V-Log table folder empty · import tables first",
+  "LUT 库为空": "LUT library empty",
+  "V-Log 表 · 按对数域输入做的，配 V-Log 素材": "V-Log tables · built for log input, pair with V-Log footage",
+  "标准表 · 再点 LUT 页签可切到 V-Log 表": "Standard table · tap the LUT tab again for V-Log tables",
+  "V-Log 表的增删排序用命令行 lut.sh": "Add, delete or reorder V-Log tables with lut.sh",
+  "Metol  /  菜单": "Metol  /  MENU",
+  "返回": "Back"
 }
