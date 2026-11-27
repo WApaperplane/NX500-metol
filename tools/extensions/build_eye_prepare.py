@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import tarfile
 
-UNIT_SHA = "ac1bab448ef00c8038104742861d631dc3991d42ef9be575779af72ac778620d"
+UNIT_SHA = "5f7824afd875a7073618401d3e157af1f909530be12f1db7dee179c2a79d7f5c"
 T2_SHA = "99931046311096f82ff58f3d6cdf951baf1053427909d2de582364d9972139c7"
 APP_SHA = "ec3951233eb81af69f4461cc2e8c44d247ec03f4467305cd8200b11f7f61bca4"
 
@@ -100,7 +100,9 @@ mkdir -p /usr/local/lib
 mkdir "$rt"; owned_rt=1
 cp "$pkg/payload/"* "$rt/"
 chmod 755 "$rt/"*.sh "$rt/claim.arm"
-chmod 644 "$rt/nxl-eye-af-yunet.so"
+# 库名随 profile 变（eye28-native 是 nxl-eye-af.so，yunet 版是 nxl-eye-af-yunet.so）。
+# 原来写死 yunet 名字，装 EYE28 时 chmod 会因文件不存在在 set -eu 下直接回滚。
+for f in "$rt"/*.so; do [ -f "$f" ] && chmod 644 "$f"; done
 pin "$rt/verify-payload.sh" @VERIFY@ || fail INSTALLED_VERIFIER
 /bin/sh "$rt/verify-payload.sh" "$rt" || fail INSTALLED_PAYLOAD
 mkdir "$state"; owned_state=1
@@ -144,7 +146,7 @@ def build(payload, output):
     if output.exists():
         raise ValueError("Output must be new")
     output.mkdir(parents=True)
-    (output / "prepare.sh").write_text(script)
+    (output / "prepare.sh").write_text(script, newline="\n")
     with tarfile.open(output / "prepare.tar", "x") as t:
         t.add(output / "prepare.sh", arcname="prepare.sh")
         for f in files:

@@ -59,6 +59,15 @@ def main():
     out.mkdir(parents=True)
     for name, source in FILES.items():
         shutil.copyfile(source, out / name)
+    # 行尾归一：相机上的 sh 会把 \r 当成参数的一部分（`set -eu\r` → invalid option），
+    # systemd 也不欢迎 CRLF。二进制（.so / .arm）不碰 —— 里面的 \r\n 只是巧合字节。
+    for name in FILES:
+        if name.endswith(('.so', '.arm')):
+            continue
+        p = out / name
+        data = p.read_bytes()
+        if b'\r\n' in data:
+            p.write_bytes(data.replace(b'\r\n', b'\n'))
     hashes = {name: digest(out / name) for name in FILES}
     checks = ['#!/bin/sh', 'set -eu', 'base=${1:-/usr/local/lib/nx-eye-af}',
               'test -d "$base" && test ! -L "$base" || exit 1',
@@ -67,7 +76,7 @@ def main():
         checks += [f'test -f "$base/{name}" && test ! -L "$base/{name}" || exit 1',
                    f'actual=$(hash_file "$base/{name}") || exit 1',
                    f'[ "${{actual%% *}}" = {h} ] || exit 1']
-    (out / 'verify-payload.sh').write_text('\n'.join(checks) + '\n', encoding='utf-8')
+    (out / 'verify-payload.sh').write_text('\n'.join(checks) + '\n', encoding='utf-8', newline='\n')
     manifest = {'schema': 1, 'upstream': 'WApaperplane/NX500-metol@4a64b061d41da0701f303646cea096daf61c0b93',
                 'sha256': hashes, 'verifier_sha256': digest(out / 'verify-payload.sh')}
     manifest.update(schema_version=1, profile=PROFILES[lib.name], model='NX500', firmware='1.12',

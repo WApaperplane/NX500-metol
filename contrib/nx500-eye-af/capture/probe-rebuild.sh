@@ -108,7 +108,8 @@ p EYE_ARMED "$(has /opt/usr/nx-eye-af/armed)"
 p EYE_LAUNCH_SH "$(h /usr/local/lib/nx-eye-af/launch.sh)"
 p EYE_LIB_NATIVE "$(has /usr/local/lib/nx-eye-af/nxl-eye-af.so)"
 p EYE_LIB_YUNET "$(has /usr/local/lib/nx-eye-af/nxl-eye-af-yunet.so)"
-p EYE_RESUME_UNIT "$(has /usr/lib/systemd/system/nx-eye-resume.service)"
+# prepare.sh 把 resume unit 装在 /etc/systemd/system/（不是 /usr/lib/...）——查错路径会恒 missing。
+p EYE_RESUME_UNIT "$(has /etc/systemd/system/nx-eye-resume.service)"
 p EYE_LIB_DIR_MOUNT "$(mount 2>/dev/null | grep -c '/usr/local/lib/nx-eye-af')"
 
 echo "## 9 storage headroom for the rebuild"
