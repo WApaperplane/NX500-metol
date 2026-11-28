@@ -402,7 +402,7 @@ V-Log 是**相机级 gamma**，不是滤镜：开了之后取景和成片一起�
 | 作用 | 改 gamma 侧曲线，取景与成片同时变；**不动 3D LUT** |
 | 放行检查 | 要求 A18 回原厂（`lut.sh off`）、PW 中性、未插 USB —— 三条不满足直接拒绝，明细落 `/tmp/nx-p0/vlog-gate.log` |
 | 与 LUT 的关系 | **V-Log 是地基**：开了 log，LUT 与 FilmLab 的判断基准全变。两者互斥 —— 先 `lut.sh off` 再开 V-Log |
-| 引擎 | 曲线引擎（RC5 `gamma-reload.sh`）放在机身 `$D/gamma/`，**默认不随包安装**；没有引擎时菜单项会报缺失 |
+| 引擎 | **1.15.10 起随包携带**：`metol-extensions/log117/`（Log117 闭包，32 文件，`payload.sha256` pin `a30ad550`）；装机时 `install.sh` 自动装到机身 `/opt/usr/nx-ks/gamma/`（只装不激活，旧树先整体备份）。也可手动 `sh /opt/usr/nx-ks/gamma-log117-install.sh check\|install` |
 | 回退 | `vlog.sh off` 回原厂 gamma；重启也回原厂（改的是运行态） |
 
 ```sh
@@ -463,7 +463,8 @@ sh /opt/usr/nx-ks/vlog.sh gate      # 放行检查，明细在 /tmp/nx-p0/vlog-g
 | `scripts/nxui.sh` · `scripts/nxui/` | NXUI 启动器 + 面板二进制（`nxui.arm` 中文 / `nxui_en.arm` 英文）+ 字体 + `lang` |
 | `scripts/lut.sh` · `scripts/lut/` | 3D LUT 入口 + 工具集（`cube2lut` / `nx_slotwrite` / `nx_regtabwrite` / `nx_regtabdump` / `nx_lutload` / `nx_lutptr` / `lutmix`） |
 | `scripts/lut_video.sh` | 录像 LUT 监视器（随 `apply`/`off` 联动，锁与状态都在 `/tmp`） |
-| `scripts/vlog.sh` · `scripts/gui_vlog.NX500` | V-Log 曲线开关与放行检查（引擎需另装到 `$D/gamma/`） |
+| `scripts/vlog.sh` · `scripts/gui_vlog.NX500` | V-Log 曲线开关与放行检查（引擎在 `metol-extensions/log117/`，装机自动装进 `$D/gamma/`） |
+| `metol-extensions/log117/` | Log117 gamma 闭包（32 文件）：`gamma-reload.sh`、`nxl-*.arm`、`data/clean-log/*.bin`、`payload.sha256`（pin `a30ad550`） |
 | `scripts/tc.sh` · `scripts/tc/*.tcy` | TC 曲线写入与曲线库 —— **已退役**，菜单入口已移除，仅作备份保留 |
 | `scripts/ssh_hint.sh` · `scripts/dropbear/` | SSH 状态提示与 dropbear 本体 |
 | `scripts/pwrlog.sh` | 关机取证采样（30 s 一条到 SD） |

@@ -125,6 +125,17 @@ if /bin/grep -q '^NX500$' /etc/version.info && [ -x /opt/usr/nx-ks/filmlab.sh ];
     /opt/usr/nx-ks/filmlab.sh mkgui >/dev/null 2>&1
 fi
 
+# ---- ★ Log117 gamma 引擎（V-Log 曲线）随包安装（2026-11-28 加入）----
+#   载荷在 SD 根 metol-extensions/log117/（Metol-<ver>.zip 自带，32 文件 1.3 MB，
+#   payload.sha256 = a30ad550… 由安装器自己 pin）。
+#   ★ 只装不激活：不改运行态 gamma，V-Log 开关仍走 vlog.sh；已有 gamma 树会先整个
+#     备份到 gamma-before-log117-<时间戳>-<pid>，运行时 state/ 保留。
+#   ★ 幂等：已装同版返回 ALREADY_INSTALLED。失败只记日志，绝不中断主模块安装。
+if /bin/grep -q '^NX500$' /etc/version.info && [ -x /opt/usr/nx-ks/gamma-log117-install.sh ] \
+   && [ -d /mnt/mmc/metol-extensions/log117 ]; then
+    /bin/sh /opt/usr/nx-ks/gamma-log117-install.sh install >>/tmp/nx-ks-gamma.log 2>&1 || true
+fi
+
 # ---- ★ 拉起 telnet + ftpd (2026-10-06) ----
 # ★ 必须放在上面的 chmod 兜底【之后】—— SD 卡 FAT 挂载丢可执行位时,
 #   /mnt/mmc/scripts/onboard.sh 本身也是 0644, 直接调用会 Permission denied。

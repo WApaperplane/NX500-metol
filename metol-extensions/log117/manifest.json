@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "schema_version": 1,
+  "profile": "log117",
+  "model": "NX500",
+  "firmware": "1.12",
+  "upstream": {
+    "repository": "NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling",
+    "commit": "eafc274e0ef0b6cb95b5ad958b2f1ac86dfc3562",
+    "archive_sha256": "49de7be7e19899526556178e386b5beafb43c2049f43ebf51b7b41e33e5fe766"
+  },
+  "target_root": "/opt/usr/nx-ks/gamma",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "e9df4c4e4e64b8168a71c3c67668dcffabbe8fca11d4ac4a7d5482562cd1679c",
+      "mode": "0644"
+    },
+    {
+      "path": "NOTICE.md",
+      "sha256": "ef9d5f2c234cfabbdb0f53784b73984b541932e0ecac0e93439db712d2596a05",
+      "mode": "0644"
+    },
+    {
+      "path": "STRENGTHS_NOTICE.md",
+      "sha256": "da527725511d5f5bfc352cbde61bdfab330d4a36307efff4f166972f505102d3",
+      "mode": "0644"
+    },
+    {
+      "path": "bin/cube2lut.arm",
+      "sha256": "1fee2e50896dd044025022a2fb3e968a857a7b1c5d1426630d899f5cf286d34d",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nx_regtabwrite.arm",
+      "sha256": "e069a00b195fba6d2ad9687b8ee789a14fe41454ab6df9f574ea5e87d45e1667",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nx_slotwrite.arm",
+      "sha256": "70903703dd5dc2df02467f7be207b9dadd631ef0a8e244493295fc9636129522",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-fileops",
+      "sha256": "c5ab4fad18a3908f2c90058665b158c925267d88dd9c2e01c349fa9b149d759d",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-gamma-life.arm",
+      "sha256": "b7d63b63abe6a2261da9f0f3ff723e6cd7a095e110cadc28c4bab95bd8766adb",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-gamma-reload.arm",
+      "sha256": "eaa49f88916c051ef6e01fad4744ae55eab68b85112ed01ea7a26059ee3ffae8",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-lutblend.arm",
+      "sha256": "acb74f412adf89da4008fc58ac209120d72e940d29a703a0f8d7fd5c4754e0f4",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-lutguard.arm",
+      "sha256": "07fb33c0c6d7d1279a9fb4cef8b8bc125143374fba3e8ff61273e6671f165fe9",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-lutidle.arm",
+      "sha256": "da2ba4416c36dbf1fa823edf70d019ef79f838df6e48da427ea5ed708ce327b7",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-lutload.arm",
+      "sha256": "e1cc784e405e849c11fa99ee5f1fbd19616ac595c7c3ed722cf7fbda619cf401",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-lutobserve.arm",
+      "sha256": "f255c19cd64e8b21654d60e3ccca60d28d536b01d028e8d7f5838d0bfcfdbcbf",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-menu",
+      "sha256": "493010e458d81073e69f8634ec88ea1f03ba0ee910da17a90fae70bb82abbe57",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-native-refresh.arm",
+      "sha256": "3a7b272e3be9ad81996c823f17f33d84e990a85eff0f252785db7d575a0ceac7",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-sharp.arm",
+      "sha256": "f4207bc4ac86c338aabebfafccfbffe7420d5003b2d53677960a347a8c42949d",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-tablecheck.arm",
+      "sha256": "d4b8d306c3d8166046651cdcbd509a25efa3fbb228c11ac86adfb16e56772efe",
+      "mode": "0755"
+    },
+    {
+      "path": "bin/nxl-usb-guard.arm",
+      "sha256": "61bf59b3bf4ccba775525e40024d0a42b86cffd22a1b94d9a431a8102f266918",
+      "mode": "0755"
+    },
+    {
+      "path": "compat/sha256sum",
+      "sha256": "4b4fd5bc0750139414e914aa1f0291c7a873975eba6c0467a7469341942572d6",
+      "mode": "0755"
+    },
+    {
+      "path": "data/clean-log/NXLOG_REF_V1.bin",
+      "sha256": "a0692509fba710a54cf47c9ce4eb05c3ef2c9a7e514b3948468b3d415f99b056",
+      "mode": "0644"
+    },
+    {
+      "path": "data/clean-log/NXL_STILL_FLAT117.bin",
+      "sha256": "a1ad580f585a2f135983a6b1da71541ebf8066a7422920e1131b1e8291aff049",
+      "mode": "0644"
+    },
+    {
+      "path": "data/release-lut-allowlist.tsv",
+      "sha256": "419ae486255df15850284e19eb9c25e2b3d2580d2b221ae01ab18ab13b262518",
+      "mode": "0644"
+    },
+    {
+      "path": "diagnose.sh",
+      "sha256": "47e5c109ba89236d5f0d1ff35098c1352974baf1687a2e6cbbeda4cab7b83084",
+      "mode": "0755"
+    },
+    {
+      "path": "gamma-reload.sh",
+      "sha256": "3308a056df1ae8bf77cc6bc138cebb9ea70e525b7fabb2937e6c75509a7487a6",
+      "mode": "0755"
+    },
+    {
+      "path": "log-lut-policy.sh",
+      "sha256": "ce526682cb48f41fe98b89e0af180e2c5fc4e08502d4b12049059aeb725f8586",
+      "mode": "0755"
+    },
+    {
+      "path": "lut-core.sh",
+      "sha256": "2f4494e3539050380fd1293d7b0ef59ba3e590897720b2266b84fc44c6e809f3",
+      "mode": "0755"
+    },
+    {
+      "path": "lut.sh",
+      "sha256": "35ee376929a40f76e884b617d6d19b0fac63002966f29a065d045bdb4c2590cd",
+      "mode": "0755"
+    },
+    {
+      "path": "process.sh",
+      "sha256": "cf0f12a1b5eba46ae9ec46c2d3b98ff16aed93582d29d378e157ea5d32589867",
+      "mode": "0755"
+    },
+    {
+      "path": "trace.sh",
+      "sha256": "5554f157abb48054f0026f9bfe0254c16f4df7d740e33a88120ed6c559668f32",
+      "mode": "0755"
+    },
+    {
+      "path": "payload.sha256",
+      "sha256": "a30ad550a68653d475aee8201e20dfbd16fd91802f2f5a41ea2e49c60fdcbf6f",
+      "mode": "0644"
+    }
+  ],
+  "runtime_paths": [
+    "state",
+    "state/startup.log",
+    "state/startup.status"
+  ],
+  "validation": "host-identity-only; camera activation not verified",
+  "camera_install_requested": false
+}

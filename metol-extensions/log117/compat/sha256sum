@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /opt/usr/nx-ks/busybox sha256sum "$@"

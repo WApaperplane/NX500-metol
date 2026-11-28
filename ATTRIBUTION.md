@@ -13,7 +13,7 @@
 | **NX-KS 2.88**（作者 **KinoSeed**） | 原始 mod 的血脉（版本号 2.88 即来自此） | ★ **待考**（未见明确 LICENSE 文件） | 产品 `VERSION` 标注血脉来源；**发布前必须联系作者或查清其声明** |
 | **capstone** | 研究侧反汇编工具（`test_server/isp/`） | BSD-3-Clause（仓库内已有其 LICENSE） | 研究仓依赖 |
 | **ge0rg/samsung-nx-hacks** | 机型表 / 固件格式参考 | 见其仓库（未复制代码，仅参考） | 参考，不含代码 |
-| **NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling** | `scripts/nx-rc/wifi/src/`（WiFi 源码闭包 37 文件）、`scripts/nx-rc/wifi/bin/nxl-wifi-{server,radio}`、`scripts/nx-rc/wifi/modules/cfg80211-cn-low5g.ko`、`scripts/nx-rc/video/bin/*`（视频档位二进制，与本项目 11-20 入库的同 SHA） | **AGPL-3.0**（与本项目同证，派生自 `WApaperplane/metol`） | 1.15.9 起直接复用，来源与许可已在 README / NOTICE 标注 |
+| **NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling** | `scripts/nx-rc/wifi/src/`（WiFi 源码闭包 37 文件）、`scripts/nx-rc/wifi/bin/nxl-wifi-{server,radio}`、`scripts/nx-rc/wifi/modules/cfg80211-cn-low5g.ko`、`scripts/nx-rc/video/bin/*`（视频档位二进制，与本项目 11-20 入库的同 SHA）；**`metol-extensions/log117/`（Log117 gamma 闭包 32 文件，Unified R1 `eafc274`，1.15.10 起随包）** | **AGPL-3.0**（与本项目同证，派生自 `WApaperplane/metol`） | 1.15.9 起直接复用，来源与许可已在 README / NOTICE 标注；gamma 闭包自带 `LICENSE` / `NOTICE.md` / `STRENGTHS_NOTICE.md` 与 `payload.sha256`（pin `a30ad550`） |
 
 ## 2. 工具链（不进产品仓，仅研究流程使用）
 
