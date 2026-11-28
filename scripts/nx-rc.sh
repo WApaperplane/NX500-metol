@@ -22,15 +22,8 @@ export APP_PATH=/opt/usr/nx-ks/nx-rc
 #
 nice --adjustment=19 $APP_PATH/nx-remote-controller-daemon &> /dev/null &
 #
-showmetheway(){
-	# IP 只显示一次(4 秒后消失)。常驻查看走主菜单: 每次按 EV 键开菜单时
-	# gen_menu.sh 会把当前 IP / Telnet 状态写进菜单标签, 不再每 4 秒弹窗刷屏。
-	IP=`ip addr ls|grep inet|grep mlan0|cut -d/ -f 1|grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}'`
-	[[ -z $IP ]] && IP="Enable WiFi"
-	killall onscreen_rc
-	 nice -n +10 /opt/usr/nx-ks/onscreen_rc "rc: $IP" &
-	sleep 4
-	killall onscreen_rc
-}
-showmetheway&
+# ★ 2026-11-28 删除开机那 4 秒 IP 条（onscreen_rc "rc: <IP>"）及其函数。
+#   它是「远程控制」checkbox 被写进 auto/ 后每次开机自动跑出来的那个 IP 弹窗；
+#   地址在主菜单的「IP: x.x.x.x [SSH开]」那一行随时可看，不需要开机打扰。
+#   需要临时看连接串：菜单点那一行（ssh_hint.sh --ui）。
 #tothenextwhiskeybar

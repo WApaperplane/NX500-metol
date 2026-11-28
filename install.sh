@@ -86,6 +86,18 @@ else
     sleep 1
 fi
 
+# ---- ★ 2026-11-28 清掉「远程保存」自启（唯一的删除例外）----
+# 病根：gui_func 里的 `checkbox|远程保存|rem.sh` 一勾选，mod_gui 就把 rem.sh
+#       复制成 /opt/usr/nx-ks/auto/rem.sh；keyscan 启动时跑 auto/*.sh ⇒
+#       每次「蓝牙初始化/开机」都弹出 rem_gui（窗口标题 NX-MOD GUI，
+#       REMOTE/USER/PASS 三行，没装 nx-netfs 时全是 not entered）。
+#       1.15.10 的包里直接带了 auto/rem.sh，等于给所有新装机默认打开这个窗。
+# 本段是 install.sh「只覆盖不删除」原则的**唯一例外**，只删这一个已知脚本：
+#   菜单入口已从 gui_func 去掉，用户若真要用 nx-netfs，重新勾选会再生成它。
+#   清理必须放在 cp -ar 之后 —— 否则 SD 卡母本里的旧 auto/rem.sh 又会被拷回来。
+rm -f /opt/usr/nx-ks/auto/rem.sh
+killall -q rem_gui 2>/dev/null
+
 # ---- NX1 特判(两分支共用; 幂等) ----
 if [ "$IS_NX1" = "1" ]; then
     [ -f /opt/usr/nx-ks/EV_EV.sh ] && mv -f /opt/usr/nx-ks/EV_EV.sh /opt/usr/nx-ks/EV_OK.sh
