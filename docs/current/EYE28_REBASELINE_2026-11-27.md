@@ -96,12 +96,22 @@ c2 体）还是 `55dcc781`（原厂体）——**T2 的两个文件指纹只能�
 
 ### 1 · prepare（只改文件）
 
+`prepare.sh` 判 `/mnt/mmc/eye28-20261127/10-prepare/payload/verify-payload.sh`，而 payload 在
+`prepare.tar` 里、不在同级目录。**直接 `sh prepare.sh install` 必报 `RESULT=UNTRUSTED_VERIFIER`**
+（不是包坏了，是没解包）。先解到临时目录再从那里跑：
+
 ```sh
-bash tools/nx-ssh.sh cmd 'cd /mnt/mmc/eye28-20261127/10-prepare && sh prepare.sh install'
+bash tools/nx-ssh.sh cmd '
+BB=/opt/usr/nx-ks/busybox
+T=/mnt/mmc/_eye-prep; $BB rm -rf "$T"; $BB mkdir -p "$T"
+cd "$T" && $BB tar xf /mnt/mmc/eye28-20261127/10-prepare/prepare.tar
+sh prepare.sh install
+'
 ```
 
 期望 `RESULT=PREPARED_NOT_ARMED` + `BASELINE=t2`，备份 `status` 里也记 `baseline=t2`。
 若报 `T2_NOT_WIRED`：机身是原厂 unit，先跑 `dicam_p5_install.sh` 把前置挂载接回去再重来。
+装完可 `$BB rm -rf /mnt/mmc/_eye-prep`（payload 已由 prepare 拷到 `/usr/local/lib/nx-eye-af`）。
 
 ### 2 · guards（仍然不动快照）
 
@@ -122,6 +132,35 @@ bash tools/nx-ssh.sh cmd 'sh /mnt/mmc/eye28-20261127/20-guards/install-guards.sh
 | `hib_post.service` Wants | 含 `nx-eye-resume.service` |
 
 三步做完相机行为与装之前一致：`eligible()` 要求 `armed` 存在，没有就走原厂 `exec`。
+
+---
+
+## 11-28 上机实录（192.168.0.107，Metol 1.15.10 之后）
+
+前置：先 `eye-withdraw.sh` 撤掉 03:46 那次旧包安装（`RESULT=WITHDRAWN`），再用
+`dicam_p5_install.sh` 把 T2 前置挂载接回（unit → `ac1bab44`，`.p5.bak` 321 B），
+然后重推重建过的 `eye28-20261127`（23 文件，`sha256sum -c` 22/22 OK）。
+
+| 步骤 | 结果 |
+|---|---|
+| `30-verify/check-before-install.sh` | 全 PASS，`RESULT=READY_FOR_PREPARE`（`INFO bootmode=2`） |
+| `10-prepare`（解包后） | `RESULT=PREPARED_NOT_ARMED` / `BASELINE=t2` / backup `nx-eye-prepare-20150102113044-1092` |
+| `20-guards/install-guards.sh` | `RESULT=GUARDS_INSTALLED_NOT_ARMED`，7 文件全 OK |
+
+只读核验实测：
+
+- `nxl-eye-af.so` = `e167e84a…`；`verify-payload.sh` = `f145ad4e…`；`verify-payload.sh $rt` → `PAYLOAD_OK`
+- `ExecStart` = `/bin/sh /usr/local/lib/nx-eye-af/launch.sh`；`ExecStartPre` = `t2_premount.sh`（`ignore_errors=yes`，drop-in 只清 `ExecStart` 的实证成立）
+- `hib_post.service` `Wants=nx-eye-resume.service`；wants 软链 → `/etc/systemd/system/nx-eye-resume.service`
+- `/opt/usr/nx-eye-af` 只有 `capture-writers-before/`，**无 `armed`、无 `launch-claim`**
+- 写入器已换成守卫版：`hibernation.sh` `3779b8a1…`、`make_snapshot.sh` `ea12c6cf…`；
+  备份里原厂对 `dd3687d3…` / `08df6e37…` 逐字节保留
+- `/etc/systemd/system/hibernation.service.d/75-nx-eye-prewrite.conf` 已落
+- 收尾 `/dev/root` 回到 `ro`（两次安装各自的 `trap … remount,ro` 都生效）
+
+注意：`di-camera-app` 当前进程仍是旧 unit 拉起的；**`t2_premount.sh` 与 `launch.sh` 都要下次
+正常关机→开机才真正进入启动链**。在 `armed` 不存在前 `eligible()` 为假，走原厂 `exec`，
+所以这一状态与装之前行为一致。
 
 ---
 
